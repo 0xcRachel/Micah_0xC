@@ -1,13 +1,9 @@
 export interface IUser {
+    id?: number;
     discordId: string;
     username: string;
-    deviceId: string;
+    deviceId?: string | null;
     verified: boolean;
-    createdAt: Date;
-    updatedAt: Date;
+    createdAt?: Date;
+    updatedAt?: Date;
 }
-export declare const UserModel: import("mongoose").Model<IUser, {}, {}, {}, import("mongoose").Document<unknown, {}, IUser, {}, {}> & IUser & {
-    _id: import("mongoose").Types.ObjectId;
-} & {
-    __v: number;
-}, any>;

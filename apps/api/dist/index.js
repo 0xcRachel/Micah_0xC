@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
-import { connectDatabase } from './plugins/mongo.js';
+import { connectDatabase } from './plugins/mysql.js';
 import { errorHandler } from './middlewares/error-handler.js';
 import { authRoutes } from './routes/auth.routes.js';
 // The API is the single authority for auth, licenses, and device state.

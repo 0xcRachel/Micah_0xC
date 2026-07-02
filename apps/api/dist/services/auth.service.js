@@ -21,7 +21,8 @@ export class AuthService {
     }
     async createLicense(discordId, deviceId) {
         const user = await this.userRepository.findByDiscordId(discordId);
-        if (!user || user.deviceId !== deviceId) {
+        const userDeviceId = typeof user?.device_id === 'string' ? user.device_id : null;
+        if (!user || userDeviceId !== deviceId) {
             throw new AppError(HTTP_CODES.UNAUTHORIZED, 401, 'Device not bound');
         }
         const key = `LIC-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -31,24 +32,32 @@ export class AuthService {
     }
     async verifyLicense(licenseKey, deviceId, discordId) {
         const license = await this.licenseRepository.findByKey(licenseKey);
-        if (!license || license.revoked || license.used) {
+        const revoked = typeof license?.revoked === 'number' ? Boolean(license.revoked) : Boolean(license?.revoked);
+        const used = typeof license?.used === 'number' ? Boolean(license.used) : Boolean(license?.used);
+        if (!license || revoked || used) {
             throw new AppError(HTTP_CODES.UNAUTHORIZED, 401, 'Invalid or used license');
         }
-        if (license.deviceId !== deviceId || license.discordId !== discordId) {
+        const rowDeviceId = typeof license.device_id === 'string' ? license.device_id : '';
+        const rowDiscordId = typeof license.discord_id === 'string' ? license.discord_id : '';
+        if (rowDeviceId !== deviceId || rowDiscordId !== discordId) {
             throw new AppError(HTTP_CODES.UNAUTHORIZED, 401, 'License does not match device or Discord account');
         }
-        if (new Date(license.expiresAt) < new Date()) {
+        const expiresAt = typeof license.expires_at === 'string' || license.expires_at instanceof Date
+            ? new Date(license.expires_at)
+            : new Date();
+        if (expiresAt < new Date()) {
             throw new AppError(HTTP_CODES.UNAUTHORIZED, 401, 'License expired');
         }
         return license;
     }
     async login(discordId, deviceId, licenseKey) {
         const license = await this.verifyLicense(licenseKey, deviceId, discordId);
-        await this.licenseRepository.markUsed(license.key);
+        const licenseKeyValue = typeof license?.license_key === 'string' ? license.license_key : '';
+        await this.licenseRepository.markUsed(licenseKeyValue);
         const payload = {
             discordId,
             deviceId,
-            licenseId: license.key,
+            licenseId: licenseKeyValue,
         };
         const options = { expiresIn: env.JWT_EXPIRE };
         const token = jwt.sign(payload, env.JWT_SECRET, options);

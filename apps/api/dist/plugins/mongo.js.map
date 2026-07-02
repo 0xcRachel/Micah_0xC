@@ -1,1 +1,1 @@
-{"version":3,"file":"mongo.js","sourceRoot":"","sources":["../../src/plugins/mongo.ts"],"names":[],"mappings":"AAAA,OAAO,QAAQ,MAAM,UAAU,CAAC;AAChC,OAAO,EAAE,GAAG,EAAE,MAAM,kBAAkB,CAAC;AACvC,OAAO,EAAE,MAAM,EAAE,MAAM,qBAAqB,CAAC;AAE7C,MAAM,CAAC,KAAK,UAAU,eAAe;IACnC,MAAM,QAAQ,CAAC,OAAO,CAAC,GAAG,CAAC,WAAW,CAAC,CAAC;IACxC,MAAM,CAAC,IAAI,CAAC,mBAAmB,CAAC,CAAC;AACnC,CAAC"}
+{"version":3,"file":"mongo.js","sourceRoot":"","sources":["../../src/plugins/mongo.ts"],"names":[],"mappings":"AAAA,MAAM,CAAC,KAAK,UAAU,eAAe;IACnC,OAAO,SAAS,CAAC;AACnB,CAAC"}

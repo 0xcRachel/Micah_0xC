@@ -1,13 +1,9 @@
 export interface ISession {
+    id?: number;
     discordId: string;
     deviceId: string;
     licenseId: string;
     jwt: string;
-    createdAt: Date;
-    updatedAt: Date;
+    createdAt?: Date;
+    updatedAt?: Date;
 }
-export declare const SessionModel: import("mongoose").Model<ISession, {}, {}, {}, import("mongoose").Document<unknown, {}, ISession, {}, {}> & ISession & {
-    _id: import("mongoose").Types.ObjectId;
-} & {
-    __v: number;
-}, any>;

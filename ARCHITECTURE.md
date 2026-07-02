@@ -3,7 +3,7 @@
 ## Goals
 
 - Keep the API as the single gateway for authentication, licensing, and device binding.
-- Ensure the Discord bot never touches MongoDB directly.
+- Ensure the Discord bot never touches MySQL directly.
 - Enforce validation and consistent response envelopes through shared schemas and services.
 
 ## Layers

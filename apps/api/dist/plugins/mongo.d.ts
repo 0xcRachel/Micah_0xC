@@ -1,1 +1,1 @@
-export declare function connectDatabase(): Promise<void>;
+export declare function connectDatabase(): Promise<undefined>;

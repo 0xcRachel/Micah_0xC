@@ -36,7 +36,7 @@ If you've ever built a desktop application that needs to **sell keys, control wh
 ## 2. Overall architecture — why it's trustworthy
 
 ```
-                    MongoDB
+                    MySQL
                         │
         ┌───────────────┴───────────────┐
         │                               │
@@ -53,7 +53,7 @@ The key idea behind this architecture is that **no client — neither the App no
 
 - No client holds secrets or a database connection.
 - Every authentication decision (login, license verification, device check) happens on the server, where you fully control the logic.
-- Even if the App or Bot is reverse-engineered, an attacker still can't talk to MongoDB directly.
+- Even if the App or Bot is reverse-engineered, an attacker still can't talk to MySQL directly.
 
 In other words, the project applies a proper **zero-trust-at-the-client** mindset — something a lot of self-made launchers (especially key-selling tools for games/utilities) tend to skip.
 
@@ -66,7 +66,7 @@ In other words, the project applies a proper **zero-trust-at-the-client** mindse
 | Desktop Client | **Tauri** + React + TypeScript + Vite | Tauri produces much lighter binaries than Electron, uses far less RAM, and packages natively — great for a launcher that needs to start fast |
 | UI | TailwindCSS + Framer Motion | Build a modern UI with smooth animations without hand-writing CSS |
 | Backend | Node.js + Fastify + TypeScript | Fastify is faster than Express and has strong type safety — good for APIs with high call frequency (heartbeat, repeated verification) |
-| Database | MongoDB | Flexible schema, well suited to license/device data whose shape may evolve over time |
+| Database | MySQL | Relational storage for users, licenses, sessions, and audit data |
 | Bot | discord.js | Leverages Discord as a ready-made authentication layer, so you don't have to build your own registration/login system |
 
 The **monorepo** structure (`apps/client`, `apps/api`, `apps/bot`, `packages/shared`) is another notable architectural choice: types, constants, and schemas are **shared** between the API and the Bot, which greatly reduces data drift — a very common bug when two services are written as separate, disconnected codebases.
@@ -78,7 +78,7 @@ The **monorepo** structure (`apps/client`, `apps/api`, `apps/bot`, `packages/sha
 This project delivers a **seamless user journey with no need for a separate account system**:
 
 1. **First launch** → the App automatically generates a unique **Device ID** and displays it for the user to copy.
-2. **Linking Discord** → the user runs `/bind DEVICE_ID` in Discord → the Bot calls the API → the data is stored in MongoDB → the device is verified.
+2. **Linking Discord** → the user runs `/bind DEVICE_ID` in Discord → the Bot calls the API → the data is stored in MySQL → the device is verified.
 3. **Getting a license** → running `/getkey` triggers a check that the device is already bound before a new license is issued.
 4. **Logging into the App** → the system checks all of the following at once: valid license, matching Discord account, matching device, not expired, and correct app version.
 

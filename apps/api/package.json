@@ -14,7 +14,7 @@
     "dotenv": "^16.4.1",
     "fastify": "^5.0.0",
     "jsonwebtoken": "^9.0.3",
-    "mongoose": "^8.9.1",
+    "mysql2": "^3.22.5",
     "pino": "^9.0.0",
     "pino-pretty": "^13.0.0",
     "zod": "^3.24.0"

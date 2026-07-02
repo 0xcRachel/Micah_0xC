@@ -13,21 +13,7 @@ export declare class AuthService {
         key: string;
         expiresAt: Date;
     }>;
-    verifyLicense(licenseKey: string, deviceId: string, discordId: string): Promise<import("mongoose").FlattenMaps<{
-        key: string;
-        discordId: string;
-        deviceId: string;
-        issuedAt: Date;
-        expiresAt: Date;
-        revoked: boolean;
-        used: boolean;
-        createdAt: Date;
-        updatedAt: Date;
-    }> & {
-        _id: import("mongoose").Types.ObjectId;
-    } & {
-        __v: number;
-    }>;
+    verifyLicense(licenseKey: string, deviceId: string, discordId: string): Promise<Record<string, unknown>>;
     login(discordId: string, deviceId: string, licenseKey: string): Promise<{
         token: string;
         expiresIn: string;
