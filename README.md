@@ -149,6 +149,6 @@ This mechanism is extremely useful when you need to **patch a critical security 
 0xC Launcher is more than just a simple "key-selling" launcher — it's a **solid reference architecture** for the problem of passwordless authentication via Discord, secure device management, tight license lifecycle control, and enforced version updates. By clearly separating Client, API, Bot, and Database, and following the principle that "the server is always the single source of truth," the project provides a strong, extensible foundation (Admin Panel, Auto Update, Dashboard planned in later phases) without sacrificing security or long-term maintainability.
 
 ## Contributor
-<a href="https://github.com/0xcRachel/MUSOU_DASH/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=0xcRachel/MUSOU_DASH" alt="Contributors" />
+<a href="https://github.com/0xcRachel/Micah_0xC/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=0xcRachel/Micah_0xC" alt="Contributors" />
 </a>
