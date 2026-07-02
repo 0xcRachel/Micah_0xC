@@ -1,0 +1,15 @@
+{
+  "name": "micah-launcher-monorepo",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "pnpm -r build",
+    "dev:api": "pnpm --filter @launcher/api dev",
+    "dev:bot": "pnpm --filter @launcher/bot dev",
+    "lint": "pnpm -r lint"
+  }
+}
