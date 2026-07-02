@@ -6,17 +6,17 @@
   </picture>
 </p>
 
-<h1 align="center">0xcLaucher</h1>
+<h1 align="center">Micah Launcher</h1>
 
 <p align="center">
-  <sub>0xC Launcher, built on ultra-light Tauri, can quickly access Steam’s appmanifest_*.acf files, slashing manifest retrieval time for optimal game library integration. Its Device Binding mechanism (stable, hardware-independent IDs) allows saving installed game states as local snapshots – acting as a built‑in backup. When SteamTools fails and wipes your games, the launcher restores the correct manifest and re‑attaches the game to Steam in seconds, ensuring you never lose data or need to re‑download.</sub>
+  <sub>Micah Launcher, built on ultra-light Tauri, can quickly access Steam’s appmanifest_*.acf files, slashing manifest retrieval time for optimal game library integration. Its Device Binding mechanism (stable, hardware-independent IDs) allows saving installed game states as local snapshots – acting as a built‑in backup. When SteamTools fails and wipes your games, the launcher restores the correct manifest and re‑attaches the game to Steam in seconds, ensuring you never lose data or need to re‑download.</sub>
 </p>
 
 <hr>
 
-# 0xC Launcher — A Desktop Launcher with License Management, Discord Auth & Device Binding
+# Micah Launcher — A Desktop Launcher with License Management, Discord Auth & Device Binding
 
-> This document explains the architecture, value, and reasons you might consider using — or drawing inspiration from — **0xC Launcher** as the foundation for your own launcher product.
+> This document explains the architecture, value, and reasons you might consider using — or drawing inspiration from — **Micah Launcher** as the foundation for your own launcher product.
 
 ---
 
@@ -29,7 +29,7 @@ If you've ever built a desktop application that needs to **sell keys, control wh
 - How do you force users to update to the latest version, avoiding bugs or security holes in old builds?
 - How do you manage the full lifecycle of a license (issuing, expiration, revocation) safely?
 
-**0xC Launcher** is built to answer exactly these questions with a clear, well-separated architecture that can grow over time — instead of stitching together ad-hoc solutions for each piece.
+**Micah Launcher** is built to answer exactly these questions with a clear, well-separated architecture that can grow over time — instead of stitching together ad-hoc solutions for each piece.
 
 ---
 
@@ -90,7 +90,7 @@ The real-world payoff here: **users never need to remember another password**. A
 
 Many other launchers use **raw HWID** (pulled from the CPU, motherboard, or SSD serial number) to lock a license to a device. This approach has a major downside: swapping a hard drive, adding RAM, or updating the BIOS can change the HWID, leading to a flood of support complaints.
 
-0xC Launcher instead uses a **Device ID generated on first run**, independent of hardware:
+Micah Launcher instead uses a **Device ID generated on first run**, independent of hardware:
 
 - Not tied to CPU/SSD/motherboard.
 - More stable over time.
@@ -146,7 +146,7 @@ This mechanism is extremely useful when you need to **patch a critical security 
 
 ## 10. Summary
 
-0xC Launcher is more than just a simple "key-selling" launcher — it's a **solid reference architecture** for the problem of passwordless authentication via Discord, secure device management, tight license lifecycle control, and enforced version updates. By clearly separating Client, API, Bot, and Database, and following the principle that "the server is always the single source of truth," the project provides a strong, extensible foundation (Admin Panel, Auto Update, Dashboard planned in later phases) without sacrificing security or long-term maintainability.
+Micah Launcher is more than just a simple "key-selling" launcher — it's a **solid reference architecture** for the problem of passwordless authentication via Discord, secure device management, tight license lifecycle control, and enforced version updates. By clearly separating Client, API, Bot, and Database, and following the principle that "the server is always the single source of truth," the project provides a strong, extensible foundation (Admin Panel, Auto Update, Dashboard planned in later phases) without sacrificing security or long-term maintainability.
 
 ## Contributor
 <a href="https://github.com/0xcRachel/Micah_0xC/graphs/contributors">
