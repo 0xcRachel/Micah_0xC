@@ -2,3 +2,5 @@ Document.md
 node_modules
 skill/
 plugins/
+.agents
+agents

@@ -6,7 +6,7 @@ const CHARACTER_IMAGE_PATH = charImg; // Cấu hình đường dẫn ảnh nhân
 const Character = ({ characterImage = CHARACTER_IMAGE_PATH }) => {
   return (
     <div className="relative w-full h-full flex items-end justify-center pointer-events-none">
-      {/* Block 1 (Backmost Curved Layer) */}
+      {/* Block 1 (Backmost Curved Dome/Blob Layer behind head) */}
       <svg
         className="absolute inset-0 w-full h-full pointer-events-none"
         viewBox="0 0 100 100"
@@ -14,8 +14,8 @@ const Character = ({ characterImage = CHARACTER_IMAGE_PATH }) => {
         style={{ zIndex: 1 }}
       >
         <path
-          d="M 0,100 Q 50,100 100,20 L 100,100 Z"
-          fill="#e6dfd3"
+          d="M 0,100 C 56 93 30 10 100 10 L 100 100 Z"
+          fill="#30302e"
         />
       </svg>
 
@@ -26,6 +26,7 @@ const Character = ({ characterImage = CHARACTER_IMAGE_PATH }) => {
             src={characterImage || CHARACTER_IMAGE_PATH}
             alt="Character"
             className="h-[110%] object-contain object-bottom transition-transform duration-500 hover:scale-105"
+            style={{ filter: 'drop-shadow(0 40px 60px rgba(0, 0, 0, 0.45))' }}
           />
         ) : (
           <div className="mb-8 p-4 border-2 border-dashed border-[#30302e]/30 rounded-xl bg-white/50 backdrop-blur-sm text-center">
@@ -39,11 +40,11 @@ const Character = ({ characterImage = CHARACTER_IMAGE_PATH }) => {
         className="absolute inset-0 w-full h-full pointer-events-none"
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
-        style={{ zIndex: 3, opacity: 0.15 }}
+        style={{ zIndex: 3 }}
       >
         <path
-          d="M 0,100 Q 50,100 100,35 L 100,100 Z"
-          fill="#30302e"
+          d="M 0,100 Q 55,96 100,46 L 100,100 Z"
+          fill="#f4f466ff"
         />
       </svg>
 
