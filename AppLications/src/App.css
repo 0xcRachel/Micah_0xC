@@ -4,7 +4,8 @@
 body {
   margin: 0;
   font-family: 'Outfit', sans-serif;
-  background-color: #f8f6f0; /* Warm bright background */
+  background-color: #f8f6f0;
+  /* Warm bright background */
   color: #30302e;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -13,7 +14,7 @@ body {
 /* Notebook Grid Pattern */
 .notebook-grid {
   background-color: #f9f8f4;
-  background-image: 
+  background-image:
     linear-gradient(to right, #e9e6dd 1px, transparent 1px),
     linear-gradient(to bottom, #e9e6dd 1px, transparent 1px);
   background-size: 32px 32px;

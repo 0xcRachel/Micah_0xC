@@ -183,7 +183,7 @@ const IntroOverlay = ({
             className="absolute flex flex-col items-center justify-center gap-5 w-full text-center px-4"
           >
             {/* Title with split characters */}
-            <h2 className="text-5xl md:text-6xl font-black tracking-[0.25em] text-[#141413] uppercase flex flex-wrap justify-center overflow-hidden py-2">
+            <h2 className="text-5xl md:text-6xl font-black tracking-[0.25em] text-[#FFF7E5] uppercase flex flex-wrap justify-center overflow-hidden py-2">
               {step.title.split('').map((char, charIdx) => (
                 <span
                   key={charIdx}
