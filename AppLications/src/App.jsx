@@ -32,7 +32,7 @@ const App = () => {
       <Background />
       
       {/* Container for Character Component */}
-      <div className="absolute bottom-0 right-0 w-[50vw] h-[85vh] pointer-events-none z-10">
+      <div className="absolute bottom-0 right-0 w-[50vw] h-[85vh] pointer-events-none z-20">
         <Character characterImage={characterImg} />
       </div>
 
