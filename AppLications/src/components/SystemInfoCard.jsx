@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
+import { invoke } from '@tauri-apps/api/core';
 
 gsap.registerPlugin(useGSAP);
 
@@ -19,40 +20,40 @@ const getMachineCode = () => {
   return code;
 };
 
-// Helper to detect system info
-const detectSystemInfo = () => {
+// Helper to detect browser fallback system info in case Tauri is not running
+const detectBrowserFallbackInfo = () => {
   const info = {
-    os: 'Windows 11 x64',
-    cpu: `${navigator.hardwareConcurrency || 8} Cores`,
+    os: 'Windows (Web Fallback)',
+    cpu: 'AMD / Intel Processor (Web)',
+    cores: `${navigator.hardwareConcurrency || 8} Cores`,
     ram: `${navigator.deviceMemory || 16} GB Est.`,
     resolution: `${window.screen.width} x ${window.screen.height}`,
-    gpu: 'Intel Iris Xe Graphics',
-    browser: 'Tauri Webview / Chrome Runtime',
+    gpu: 'Graphics Adapter (Web)',
   };
 
-  // Detect basic OS from User Agent
   const ua = navigator.userAgent;
-  if (ua.indexOf('Macintosh') !== -1) info.os = 'macOS (Darwin)';
-  else if (ua.indexOf('Linux') !== -1) info.os = 'Linux Kernel';
-  else if (ua.indexOf('Android') !== -1) info.os = 'Android OS';
-  else if (ua.indexOf('iPhone') !== -1) info.os = 'iOS Mobile';
+  if (ua.indexOf('Macintosh') !== -1) {
+    info.os = 'macOS (Web Fallback)';
+    info.cpu = 'Apple Silicon (Web)';
+  } else if (ua.indexOf('Linux') !== -1) {
+    info.os = 'Linux Kernel (Web)';
+  }
 
-  // Extract GPU using WebGL context
   try {
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
     if (gl) {
       const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
       if (debugInfo) {
-        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_VENDOR_ID);
-        // Clean up common renderer strings to look cleaner
+        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_STRING_WEBGL);
         if (renderer) {
           if (renderer.includes('NVIDIA')) {
-            info.gpu = renderer.match(/NVIDIA[^\)]+/)?.[0] || 'NVIDIA GeForce RTX';
+            info.gpu = renderer.match(/NVIDIA[^\)]+/)?.[0] || 'NVIDIA GPU';
           } else if (renderer.includes('AMD') || renderer.includes('Radeon')) {
-            info.gpu = renderer.match(/(AMD|Radeon)[^\)]+/)?.[0] || 'AMD Radeon Graphics';
+            info.gpu = renderer.match(/(AMD|Radeon)[^\)]+/)?.[0] || 'AMD GPU';
+            info.cpu = 'AMD Processor (Web)';
           } else if (renderer.includes('Intel')) {
-            info.gpu = renderer.match(/Intel[^\)]+/)?.[0] || 'Intel UHD Graphics';
+            info.gpu = renderer.match(/Intel[^\)]+/)?.[0] || 'Intel GPU';
           } else if (renderer.includes('Apple')) {
             info.gpu = 'Apple Silicon GPU';
           } else {
@@ -62,23 +63,48 @@ const detectSystemInfo = () => {
       }
     }
   } catch (e) {
-    info.gpu = 'Standard Display Adapter';
+    // ignore
   }
 
   return info;
 };
 
 const SystemInfoCard = ({ className = '', style = {} }) => {
-  const [sysInfo, setSysInfo] = useState({ os: 'Detecting...', cpu: '', ram: '', resolution: '', gpu: '', browser: '' });
+  const [sysInfo, setSysInfo] = useState({
+    os: 'Detecting...',
+    cpu: 'Detecting...',
+    cores: 'Detecting...',
+    ram: 'Detecting...',
+    resolution: `${window.screen.width} x ${window.screen.height}`,
+    gpu: 'Detecting...',
+  });
   const [machineCode, setMachineCode] = useState('');
   const [status, setStatus] = useState('ONLINE');
   const cardRef = useRef(null);
 
   useEffect(() => {
-    setSysInfo(detectSystemInfo());
     setMachineCode(getMachineCode());
 
-    // Periodically fluctuate status slightly for retro immersion
+    // Call Rust Tauri command to get real hardware info
+    const fetchRealSystemInfo = async () => {
+      try {
+        const realInfo = await invoke('get_system_info');
+        setSysInfo({
+          os: realInfo.os || 'Windows 11',
+          cpu: realInfo.cpu || 'Intel Core i7',
+          cores: realInfo.cores || '8 Cores',
+          ram: realInfo.ram || '16 GB',
+          resolution: `${window.screen.width} x ${window.screen.height}`,
+          gpu: realInfo.gpu || 'NVIDIA Graphics',
+        });
+      } catch (err) {
+        console.warn('Could not call Tauri backend, using browser fallback:', err);
+        setSysInfo(detectBrowserFallbackInfo());
+      }
+    };
+
+    fetchRealSystemInfo();
+
     const interval = setInterval(() => {
       setStatus(prev => prev === 'ONLINE' ? 'SYS_OK' : 'ONLINE');
     }, 4000);
@@ -89,13 +115,11 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
   useGSAP(() => {
     const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
 
-    // Card boundary expand
     tl.fromTo(cardRef.current,
       { y: 30, opacity: 0, scale: 0.98 },
       { y: 0, opacity: 1, scale: 1, duration: 0.6 }
     );
 
-    // Stagger each info-row slide in
     const rows = cardRef.current?.querySelectorAll('.info-row');
     if (rows && rows.length > 0) {
       tl.fromTo(rows,
@@ -105,7 +129,6 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
       );
     }
 
-    // Ping dot pulsing
     gsap.to('.status-led', {
       opacity: 0.3,
       duration: 0.6,
@@ -148,7 +171,7 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
             }}
           />
           <h2 style={{ fontSize: '15px', fontWeight: '900', color: '#30302e', textTransform: 'uppercase', letterSpacing: '0.8px', margin: 0 }}>
-            System Terminal diagnostics
+            System Diagnostics Terminal
           </h2>
         </div>
         <span style={{
@@ -186,15 +209,21 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
           <span style={{ fontSize: '13px', fontWeight: '800', color: '#30302e' }}>{sysInfo.os}</span>
         </div>
 
-        {/* CPU Cores */}
-        <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <span style={{ fontSize: '9px', fontWeight: '700', color: '#87867f', textTransform: 'uppercase', letterSpacing: '0.5px' }}>CPU Cores</span>
-          <span style={{ fontSize: '13px', fontWeight: '800', color: '#30302e' }}>{sysInfo.cpu}</span>
+        {/* Processor Name */}
+        <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: 'span 2' }}>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: '#87867f', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Processor</span>
+          <span style={{ fontSize: '13px', fontWeight: '800', color: '#30302e', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sysInfo.cpu}</span>
         </div>
 
-        {/* RAM Limit */}
+        {/* CPU Cores count */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <span style={{ fontSize: '9px', fontWeight: '700', color: '#87867f', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Memory Allocation</span>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: '#87867f', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Logical Cores</span>
+          <span style={{ fontSize: '13px', fontWeight: '800', color: '#30302e' }}>{sysInfo.cores}</span>
+        </div>
+
+        {/* RAM Size */}
+        <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: '#87867f', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Memory</span>
           <span style={{ fontSize: '13px', fontWeight: '800', color: '#30302e' }}>{sysInfo.ram}</span>
         </div>
 
@@ -207,7 +236,7 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
         {/* Graphics Engine */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: 'span 2', borderTop: '1px solid #dcd7cd', paddingTop: '8px', marginTop: '4px' }}>
           <span style={{ fontSize: '9px', fontWeight: '700', color: '#87867f', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Graphics Processing Unit</span>
-          <span style={{ fontSize: '12px', fontWeight: '800', color: '#30302e', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sysInfo.gpu}</span>
+          <span style={{ fontSize: '12px', fontWeight: '800', color: '#30302e', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={sysInfo.gpu}>{sysInfo.gpu}</span>
         </div>
       </div>
 

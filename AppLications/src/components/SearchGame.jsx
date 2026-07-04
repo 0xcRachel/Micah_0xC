@@ -1,125 +1,200 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
+import { invoke } from '@tauri-apps/api/core';
 
 // Register GSAP hook
 gsap.registerPlugin(useGSAP);
 
-export const GAMES_DATA = [
-  {
-    id: 1,
-    title: 'Elden Ring',
-    developer: 'FromSoftware, Inc.',
-    imageSrc: 'https://cdn.akamai.steamstatic.com/steam/apps/1245620/header.jpg',
-    score: 93,
-    scoreLabel: 'Very Positive',
-    price: '$59.99',
-    tags: ['Souls-like', 'RPG', 'Open World']
-  },
-  {
-    id: 2,
-    title: 'Portal 2',
-    developer: 'Valve',
-    imageSrc: 'https://cdn.akamai.steamstatic.com/steam/apps/620/header.jpg',
-    score: 98,
-    scoreLabel: 'Overwhelmingly Positive',
-    price: '$9.99',
-    tags: ['Puzzle', 'Co-op', 'Comedy']
-  },
-  {
-    id: 3,
-    title: 'Stardew Valley',
-    developer: 'ConcernedApe',
-    imageSrc: 'https://cdn.akamai.steamstatic.com/steam/apps/413150/header.jpg',
-    score: 97,
-    scoreLabel: 'Overwhelmingly Positive',
-    price: '$14.99',
-    tags: ['Farming Sim', 'Relaxing', 'RPG']
-  },
-  {
-    id: 4,
-    title: 'Hades',
-    developer: 'Supergiant Games',
-    imageSrc: 'https://cdn.akamai.steamstatic.com/steam/apps/1145360/header.jpg',
-    score: 98,
-    scoreLabel: 'Overwhelmingly Positive',
-    price: '$24.99',
-    tags: ['Rogue-like', 'Action', 'Indie']
-  },
-  {
-    id: 5,
-    title: 'Cyberpunk 2077',
-    developer: 'CD PROJEKT RED',
-    imageSrc: 'https://cdn.akamai.steamstatic.com/steam/apps/1091500/header.jpg',
-    score: 83,
-    scoreLabel: 'Very Positive',
-    price: '$59.99',
-    tags: ['Cyberpunk', 'Open World', 'Sci-fi']
-  },
-  {
-    id: 6,
-    title: 'Kaoruko Waguri: Days',
-    developer: 'VisualArts / Key',
-    imageSrc: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500&auto=format&fit=crop&q=80',
-    score: 96,
-    scoreLabel: 'Overwhelmingly Positive',
-    price: '$19.99',
-    tags: ['Visual Novel', 'Anime', 'Story Rich']
-  }
+// ─── Debounce helper ─────────────────────────────────────────────────────────
+function useDebounce(fn, delay) {
+  const timer = useRef(null);
+  return useCallback((...args) => {
+    clearTimeout(timer.current);
+    timer.current = setTimeout(() => fn(...args), delay);
+  }, [fn, delay]);
+}
+
+// ─── Multi-proxy fetcher for browser dev mode ───────────────────────────────
+const CORS_PROXIES = [
+  (url) => `https://corsproxy.io/?url=${encodeURIComponent(url)}`,
+  (url) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
 ];
 
+async function fetchWithProxy(url) {
+  for (const makeProxy of CORS_PROXIES) {
+    try {
+      const resp = await fetch(makeProxy(url), { signal: AbortSignal.timeout(6000) });
+      if (!resp.ok) continue;
+      const text = await resp.text();
+      return JSON.parse(text);
+    } catch {
+      // try next proxy
+    }
+  }
+  throw new Error('All proxies failed');
+}
+
+// ─── SearchGame Component ─────────────────────────────────────────────────────
 const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
   const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
   const [isOpen, setIsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+
   const containerRef = useRef(null);
   const inputRef = useRef(null);
   const dropdownRef = useRef(null);
   const iconRef = useRef(null);
 
-  const filteredGames = GAMES_DATA.filter((game) =>
-    game.title.toLowerCase().includes(query.toLowerCase()) ||
-    game.developer.toLowerCase().includes(query.toLowerCase()) ||
-    game.tags.some((t) => t.toLowerCase().includes(query.toLowerCase()))
-  );
+  // ── Fetch search results from Steam Store API (via Tauri proxy) ──────────
+  const fetchSearchResults = useCallback(async (q) => {
+    if (!q.trim() || q.trim().length < 2) {
+      setResults([]);
+      setIsOpen(false);
+      return;
+    }
 
-  // Focus/Blur effects with GSAP
+    setIsLoading(true);
+    try {
+      // Primary: Tauri Rust backend (avoids CORS completely)
+      const items = await invoke('search_steam_games', { query: q });
+      setResults(items);
+      if (items.length > 0) setIsOpen(true);
+    } catch {
+      // Fallback for browser dev mode: use CORS proxies
+      try {
+        const steamUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(q)}&l=english&cc=US`;
+        const json = await fetchWithProxy(steamUrl);
+        const items = (json.items || []).slice(0, 8).map((item) => ({
+          appid: item.id,
+          name: item.name,
+          header_image: `https://cdn.cloudflare.steamstatic.com/steam/apps/${item.id}/header.jpg`,
+        }));
+        setResults(items);
+        if (items.length > 0) setIsOpen(true);
+        else setResults([]);
+      } catch {
+        console.warn('Steam search: all proxies failed. Please run via Tauri (cargo tauri dev).');
+        setResults([]);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  const debouncedSearch = useDebounce(fetchSearchResults, 350);
+
+  const handleQueryChange = (e) => {
+    const val = e.target.value;
+    setQuery(val);
+    debouncedSearch(val);
+  };
+
+  // ── When user clicks a search result, load full game details ────────────
+  const handleItemClick = async (item) => {
+    setIsOpen(false);
+    setQuery('');
+    setIsLoadingDetail(true);
+
+    // Bounce feedback on input
+    gsap.timeline()
+      .to(inputRef.current, { scale: 0.97, duration: 0.08 })
+      .to(inputRef.current, { scale: 1, duration: 0.2, ease: 'elastic.out(1.1)' });
+
+    try {
+      const detail = await invoke('get_steam_game_detail', { appid: item.appid });
+
+      const gameObj = {
+        title: detail.name,
+        developer: detail.developers?.[0] || detail.publishers?.[0] || 'Unknown',
+        imageSrc: detail.header_image,
+        score: detail.metacritic > 0 ? detail.metacritic : (detail.score || 0),
+        scoreLabel: detail.score_label || 'N/A',
+        price: detail.price || 'N/A',
+        tags: detail.genres?.slice(0, 4) || [],
+        categories: detail.categories || [],
+        publishers: detail.publishers || [],
+        shortDescription: detail.short_description || '',
+        releaseDate: detail.release_date || '',
+        metacritic: detail.metacritic || 0,
+        appid: detail.appid,
+        pcRequirementsMinimum: detail.pc_requirements_minimum || '',
+        pcRequirementsRecommended: detail.pc_requirements_recommended || '',
+      };
+      onSelectGame(gameObj);
+    } catch {
+      // Fallback for browser dev mode: use CORS proxies
+      try {
+        const steamUrl = `https://store.steampowered.com/api/appdetails?appids=${item.appid}&cc=US&l=english`;
+        const json = await fetchWithProxy(steamUrl);
+        const key = String(item.appid);
+        if (json[key]?.success) {
+          const d = json[key].data;
+          const mc = d.metacritic?.score || 0;
+          onSelectGame({
+            title: d.name,
+            developer: d.developers?.[0] || d.publishers?.[0] || 'Unknown',
+            imageSrc: d.header_image,
+            score: mc,
+            scoreLabel: mc >= 90 ? 'Overwhelmingly Positive' : mc >= 75 ? 'Very Positive' : mc >= 60 ? 'Mostly Positive' : mc > 0 ? 'Mixed' : 'N/A',
+            price: d.is_free ? 'Free' : (d.price_overview?.final_formatted || 'N/A'),
+            tags: (d.genres || []).slice(0, 4).map(g => g.description),
+            categories: (d.categories || []).map(c => c.description),
+            publishers: d.publishers || [],
+            shortDescription: d.short_description || '',
+            releaseDate: d.release_date?.date || '',
+            metacritic: mc,
+            appid: item.appid,
+            pcRequirementsMinimum: d.pc_requirements?.minimum || '',
+            pcRequirementsRecommended: d.pc_requirements?.recommended || '',
+          });
+        } else {
+          throw new Error('appdetails returned no data');
+        }
+      } catch {
+        // Last resort: use minimal data from search result
+        onSelectGame({
+          title: item.name,
+          developer: 'Unknown',
+          imageSrc: item.header_image,
+          score: 0,
+          scoreLabel: 'N/A',
+          price: 'N/A',
+          tags: [],
+        });
+      }
+    } finally {
+      setIsLoadingDetail(false);
+    }
+  };
+
+  // ── GSAP dropdown open/close animation ──────────────────────────────────
   useGSAP(() => {
-    if (isOpen) {
-      // Animate dropdown list container sliding down
+    if (isOpen && dropdownRef.current) {
       gsap.fromTo(dropdownRef.current,
-        { opacity: 0, y: -10, scaleY: 0.95 },
-        { opacity: 1, y: 0, scaleY: 1, duration: 0.25, ease: 'back.out(1.2)' }
+        { opacity: 0, y: -8, scaleY: 0.95 },
+        { opacity: 1, y: 0, scaleY: 1, duration: 0.22, ease: 'back.out(1.2)', transformOrigin: 'top center' }
       );
-      // Animate item list staggered entry
       const items = dropdownRef.current?.querySelectorAll('.search-item');
       if (items && items.length > 0) {
         gsap.fromTo(items,
-          { opacity: 0, x: -15 },
-          { opacity: 1, x: 0, duration: 0.2, stagger: 0.04, ease: 'power2.out' }
+          { opacity: 0, x: -12 },
+          { opacity: 1, x: 0, duration: 0.18, stagger: 0.035, ease: 'power2.out' }
         );
       }
-      // Spin Search icon slightly
-      gsap.to(iconRef.current, { rotation: 90, scale: 1.1, color: '#30302e', duration: 0.3 });
+      gsap.to(iconRef.current, { rotation: 90, scale: 1.1, color: '#30302e', duration: 0.25, ease: 'power2.out' });
     } else {
-      gsap.to(iconRef.current, { rotation: 0, scale: 1, color: '#87867f', duration: 0.2 });
+      gsap.to(iconRef.current, { rotation: 0, scale: 1, color: '#87867f', duration: 0.18 });
     }
-  }, { dependencies: [isOpen, query], scope: containerRef });
+  }, { dependencies: [isOpen, results], scope: containerRef });
 
-  const handleFocus = () => setIsOpen(true);
-  const handleBlur = () => {
-    // Delay blur slightly to allow clicks to go through to list items
-    setTimeout(() => setIsOpen(false), 200);
+  const handleFocus = () => {
+    if (results.length > 0) setIsOpen(true);
   };
-
-  const handleItemClick = (game) => {
-    onSelectGame(game);
-    setQuery('');
-    setIsOpen(false);
-
-    // Bounce interaction on input
-    gsap.timeline()
-      .to(inputRef.current, { scale: 0.96, duration: 0.1 })
-      .to(inputRef.current, { scale: 1, duration: 0.15, ease: 'elastic.out(1.2)' });
+  const handleBlur = () => {
+    setTimeout(() => setIsOpen(false), 200);
   };
 
   return (
@@ -129,98 +204,118 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
       style={{
         fontFamily: "'Outfit', 'Segoe UI', sans-serif",
         userSelect: 'none',
-        ...style
+        ...style,
       }}
     >
-      {/* Input container */}
+      {/* Stable hover/press wrapper to avoid GSAP jitter */}
       <div
-        ref={inputRef}
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          background: '#faf9f6',
-          border: '2px solid #30302e',
-          borderRadius: '16px',
-          padding: '8px 16px',
-          boxShadow: '0 4px 0 #30302e',
-          transition: 'box-shadow 0.2s, transform 0.2s',
+        onMouseEnter={() => {
+          gsap.to(inputRef.current, { y: -3, boxShadow: '0 6px 0 #30302e', duration: 0.18, ease: 'power2.out' });
         }}
-        className="hover:translate-y-[-2px] hover:shadow-[0_6px_0_#30302e] active:translate-y-[2px] active:shadow-[0_2px_0_#30302e]"
+        onMouseLeave={() => {
+          gsap.to(inputRef.current, { y: 0, boxShadow: '0 4px 0 #30302e', duration: 0.18, ease: 'power2.out' });
+        }}
+        onMouseDown={() => {
+          gsap.to(inputRef.current, { y: 2, boxShadow: '0 2px 0 #30302e', duration: 0.08 });
+        }}
+        onMouseUp={() => {
+          gsap.to(inputRef.current, { y: -3, boxShadow: '0 6px 0 #30302e', duration: 0.12, ease: 'back.out(1.2)' });
+        }}
+        style={{ paddingBottom: '6px', cursor: 'pointer' }}
       >
-        {/* Search icon */}
-        <span ref={iconRef} style={{ display: 'inline-flex', marginRight: '10px', color: '#87867f' }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="11" cy="11" r="8" />
-            <line x1="21" y1="21" x2="16.65" y2="16.65" />
-          </svg>
-        </span>
-
-        {/* Input */}
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          placeholder="Search Steam Games (e.g. Elden Ring, Portal 2...)"
+        {/* Visual input container */}
+        <div
+          ref={inputRef}
           style={{
-            flex: 1,
-            border: 'none',
-            outline: 'none',
-            background: 'transparent',
-            fontFamily: 'inherit',
-            fontSize: '14px',
-            color: '#30302e',
-            fontWeight: '500',
+            display: 'flex',
+            alignItems: 'center',
+            background: '#faf9f6',
+            border: '2px solid #30302e',
+            borderRadius: '16px',
+            padding: '8px 16px',
+            boxShadow: '0 4px 0 #30302e',
           }}
-        />
-
-        {/* Clear Button */}
-        {query && (
-          <button
-            onClick={() => setQuery('')}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              color: '#87867f',
-              padding: '2px',
-              display: 'inline-flex',
-            }}
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
+        >
+          {/* Search icon */}
+          <span ref={iconRef} style={{ display: 'inline-flex', marginRight: '10px', color: '#87867f' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="11" cy="11" r="8" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
-          </button>
-        )}
+          </span>
+
+          {/* Input */}
+          <input
+            type="text"
+            value={query}
+            onChange={handleQueryChange}
+            onFocus={handleFocus}
+            onBlur={handleBlur}
+            placeholder="Search Steam Games (e.g. Elden Ring, Portal 2...)"
+            style={{
+              flex: 1,
+              border: 'none',
+              outline: 'none',
+              background: 'transparent',
+              fontFamily: 'inherit',
+              fontSize: '14px',
+              color: '#30302e',
+              fontWeight: '500',
+            }}
+          />
+
+          {/* Loading spinner or clear button */}
+          {isLoading ? (
+            <span style={{ display: 'inline-flex', color: '#87867f' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                style={{ animation: 'spin 0.8s linear infinite' }}>
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+              </svg>
+            </span>
+          ) : query ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setQuery('');
+                setResults([]);
+                setIsOpen(false);
+              }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#87867f', padding: '2px', display: 'inline-flex' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          ) : null}
+        </div>
       </div>
 
-      {/* Dropdown search results */}
-      {isOpen && filteredGames.length > 0 && (
+      {/* Dropdown results */}
+      {isOpen && results.length > 0 && (
         <div
           ref={dropdownRef}
           style={{
             position: 'absolute',
-            top: 'calc(100% + 12px)',
+            top: 'calc(100% + 8px)',
             left: 0,
             right: 0,
             background: '#faf9f6',
             border: '2px solid #30302e',
             borderRadius: '16px',
-            boxShadow: '0 8px 24px rgba(48,48,46,0.12), 0 6px 0 #30302e',
-            zIndex: 100,
-            maxHeight: '260px',
+            boxShadow: '0 6px 0 #30302e, 0 16px 32px rgba(48,48,46,0.12)',
+            zIndex: 200,
+            maxHeight: '280px',
             overflowY: 'auto',
             transformOrigin: 'top center',
             padding: '8px',
           }}
           className="thin-scrollbar"
         >
-          {filteredGames.map((game) => (
+          {results.map((item) => (
             <div
-              key={game.id}
-              onClick={() => handleItemClick(game)}
+              key={item.appid}
+              onClick={() => handleItemClick(item)}
+              className="search-item"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -228,44 +323,68 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
                 padding: '8px 12px',
                 borderRadius: '10px',
                 cursor: 'pointer',
-                transition: 'background-color 0.2s',
+                transition: 'background-color 0.15s',
               }}
-              className="search-item hover:bg-[#ede9e3]"
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#ede9e3'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             >
-              {/* Game thumbnail image */}
+              {/* Thumbnail */}
               <img
-                src={game.imageSrc}
-                alt={game.title}
+                src={item.header_image}
+                alt={item.name}
                 style={{
-                  width: '50px',
-                  height: '28px',
+                  width: '54px',
+                  height: '30px',
                   objectFit: 'cover',
-                  borderRadius: '4px',
+                  borderRadius: '5px',
                   border: '1px solid #ddd8ce',
                 }}
               />
-              {/* Game info */}
+              {/* Game name */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: '13px', fontWeight: '700', color: '#30302e', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {game.title}
+                  {item.name}
                 </div>
-                <div style={{ fontSize: '10px', color: '#87867f', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {game.developer}
+                <div style={{ fontSize: '10px', color: '#87867f' }}>
+                  App ID: {item.appid}
                 </div>
               </div>
-              {/* Game score badge */}
-              <div style={{
-                background: game.score >= 80 ? '#4d9e6a' : '#c49a3a',
-                color: '#fff',
-                fontSize: '10px',
-                fontWeight: '800',
-                padding: '2px 6px',
-                borderRadius: '4px',
-              }}>
-                {game.score}
-              </div>
+              {/* Arrow indicator */}
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#87867f" strokeWidth="2.5">
+                <line x1="5" y1="12" x2="19" y2="12" />
+                <polyline points="12 5 19 12 12 19" />
+              </svg>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Global spinner style */}
+      <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+
+      {/* Loading detail overlay */}
+      {isLoadingDetail && (
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'rgba(250,249,246,0.7)',
+          borderRadius: '16px',
+          fontSize: '12px',
+          fontWeight: '700',
+          color: '#87867f',
+          gap: '8px',
+        }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+            style={{ animation: 'spin 0.8s linear infinite' }}>
+            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+          </svg>
+          Loading game data from Steam...
         </div>
       )}
     </div>

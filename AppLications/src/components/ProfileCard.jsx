@@ -44,7 +44,8 @@ const GameCard = ({
   const firstUpdate = useRef(true);
 
   const sc = Math.max(0, Math.min(100, displayGame.score));
-  const sColor = scoreColor(sc);
+  const hasScore = sc > 0 && displayGame.scoreLabel !== 'N/A';
+  const sColor = hasScore ? scoreColor(sc) : '#b0aca4';
   const visibleTags = displayGame.tags.slice(0, 3);
 
   // GSAP out-and-in transition animation when game props update
@@ -137,7 +138,7 @@ const GameCard = ({
             height: '60px',
             borderRadius: '50%',
             border: `3px solid ${sColor}`,
-            background: '#faf9f6', // Clean light background
+            background: '#faf9f6',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -145,12 +146,21 @@ const GameCard = ({
             boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
           }}
         >
-          <span style={{
-            fontSize: '22px',
-            fontWeight: '900',
-            color: '#30302e',
-            lineHeight: 1,
-          }}>{sc}</span>
+          {hasScore ? (
+            <span style={{
+              fontSize: '22px',
+              fontWeight: '900',
+              color: '#30302e',
+              lineHeight: 1,
+            }}>{sc}</span>
+          ) : (
+            <span style={{
+              fontSize: '20px',
+              color: '#b0aca4',
+              lineHeight: 1,
+              fontWeight: '300',
+            }}>?</span>
+          )}
         </div>
 
         {/* Divider */}
@@ -172,7 +182,7 @@ const GameCard = ({
           lineHeight: 1.2,
           maxWidth: '85px',
         }}>
-          {displayGame.scoreLabel}
+          {hasScore ? displayGame.scoreLabel : 'No Reviews'}
         </span>
 
         {/* "REVIEW" */}

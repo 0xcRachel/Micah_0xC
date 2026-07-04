@@ -132,8 +132,46 @@ const ImagePreviewModal = ({ game, onClose }) => {
 
   if (!game) return null;
 
-  const gameSpecs = SYSTEM_REQUIREMENTS[game.title] || SYSTEM_REQUIREMENTS['default'];
-  const sColor = scoreColor(game.score);
+  const sc = Math.max(0, Math.min(100, game.score || 0));
+  const hasScore = sc > 0 && game.scoreLabel !== 'N/A';
+  const sColor = hasScore ? scoreColor(sc) : '#b0aca4';
+
+  // Parse dynamic requirements from Steam HTML if present
+  const parseRequirements = (htmlStr) => {
+    if (!htmlStr || typeof htmlStr !== 'string') return null;
+    const extract = (pattern) => {
+      const match = htmlStr.match(pattern);
+      if (match && match[1]) {
+        return match[1].replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').trim();
+      }
+      return null;
+    };
+    const os = extract(/<strong>OS:?<\/strong>\s*([^<]+)/i) || extract(/OS:?\s*([^<]+)/i);
+    const cpu = extract(/<strong>Processor:?<\/strong>\s*([^<]+)/i) || extract(/Processor:?\s*([^<]+)/i) || extract(/<strong>CPU:?<\/strong>\s*([^<]+)/i);
+    const ram = extract(/<strong>Memory:?<\/strong>\s*([^<]+)/i) || extract(/Memory:?\s*([^<]+)/i) || extract(/<strong>RAM:?<\/strong>\s*([^<]+)/i);
+    const gpu = extract(/<strong>Graphics:?<\/strong>\s*([^<]+)/i) || extract(/Graphics:?\s*([^<]+)/i) || extract(/<strong>Video Card:?<\/strong>\s*([^<]+)/i);
+    const dx = extract(/<strong>DirectX:?<\/strong>\s*([^<]+)/i) || extract(/DirectX:?\s*([^<]+)/i);
+    const storage = extract(/<strong>Storage:?<\/strong>\s*([^<]+)/i) || extract(/Storage:?\s*([^<]+)/i) || extract(/<strong>Hard Drive:?<\/strong>\s*([^<]+)/i);
+
+    if (!os && !cpu && !ram && !gpu && !storage) return null;
+    return {
+      os: os || 'N/A',
+      cpu: cpu || 'N/A',
+      ram: ram || 'N/A',
+      gpu: gpu || 'N/A',
+      dx: dx || 'N/A',
+      storage: storage || 'N/A',
+    };
+  };
+
+  const parsedMin = parseRequirements(game.pcRequirementsMinimum);
+  const parsedRec = parseRequirements(game.pcRequirementsRecommended);
+  const staticSpecs = SYSTEM_REQUIREMENTS[game.title] || SYSTEM_REQUIREMENTS['default'];
+
+  // If parsed is successful, use it; otherwise fallback to static, or null (which will render raw HTML)
+  const minSpecs = parsedMin || (game.pcRequirementsMinimum ? null : staticSpecs.minimum);
+  const recSpecs = parsedRec || (game.pcRequirementsRecommended ? null : staticSpecs.recommended);
+  const categories = (game.categories && game.categories.length > 0) ? game.categories : staticSpecs.categories;
 
   const handleClose = () => {
     const tl = gsap.timeline({ onComplete: onClose });
@@ -170,6 +208,62 @@ const ImagePreviewModal = ({ game, onClose }) => {
       </span>
     </div>
   );
+
+  const renderSpecsContainer = (title, specs, rawHtml, isRecommended) => {
+    const titleColor = isRecommended ? '#4d9e6a' : '#b85040';
+    const bgColor = isRecommended ? '#ede9e3' : '#f4f2ed';
+    
+    return (
+      <div style={{
+        background: bgColor,
+        border: '1.5px solid #30302e',
+        borderRadius: '16px',
+        padding: '16px 18px',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '10px',
+        boxShadow: '0 2px 0 #30302e',
+        maxHeight: '260px',
+        overflowY: 'auto',
+      }} className="thin-scrollbar">
+        <h4 style={{ 
+          fontSize: '11.5px', 
+          fontWeight: '900', 
+          color: titleColor, 
+          textTransform: 'uppercase', 
+          margin: '0 0 6px 0', 
+          borderBottom: '1px dashed #30302e', 
+          paddingBottom: '6px', 
+          letterSpacing: '0.5px' 
+        }}>
+          {title}
+        </h4>
+        {specs ? (
+          <div style={{ display: 'flex', flexDirection: 'column' }}>
+            {renderSpecRow('OS', specs.os)}
+            {renderSpecRow('CPU', specs.cpu)}
+            {renderSpecRow('RAM', specs.ram)}
+            {renderSpecRow('GPU', specs.gpu)}
+            {renderSpecRow('DirectX', specs.dx)}
+            {renderSpecRow('Storage', specs.storage)}
+          </div>
+        ) : rawHtml ? (
+          <div 
+            className="raw-html-specs"
+            style={{ 
+              fontSize: '10.5px', 
+              fontWeight: '600', 
+              color: '#30302e',
+              lineHeight: '1.5'
+            }}
+            dangerouslySetInnerHTML={{ __html: rawHtml }}
+          />
+        ) : (
+          <span style={{ fontSize: '11px', color: '#87867f', fontWeight: '600' }}>N/A</span>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div
@@ -305,13 +399,13 @@ const ImagePreviewModal = ({ game, onClose }) => {
                 justifyContent: 'center',
                 fontWeight: '900',
                 fontSize: '22px',
-                color: '#30302e',
+                color: hasScore ? '#30302e' : '#b0aca4',
                 background: '#f4f2ed',
               }}>
-                {game.score}
+                {hasScore ? sc : '?'}
               </div>
               <span style={{ fontSize: '10px', fontWeight: '900', color: sColor, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                {game.scoreLabel}
+                {hasScore ? game.scoreLabel : 'No Reviews'}
               </span>
             </div>
 
@@ -359,7 +453,7 @@ const ImagePreviewModal = ({ game, onClose }) => {
                 Game Features & Categories
               </h3>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {gameSpecs.categories.map((cat, i) => (
+                {categories.map((cat, i) => (
                   <span key={i} style={{
                     background: '#ede9e3',
                     color: '#30302e',
@@ -409,51 +503,8 @@ const ImagePreviewModal = ({ game, onClose }) => {
                 gridTemplateColumns: '1fr 1fr',
                 gap: '16px',
               }}>
-                {/* Minimum specs */}
-                <div style={{
-                  background: '#f4f2ed',
-                  border: '1.5px solid #30302e',
-                  borderRadius: '16px',
-                  padding: '16px 18px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px',
-                }}>
-                  <h4 style={{ fontSize: '11.5px', fontWeight: '900', color: '#b85040', textTransform: 'uppercase', margin: '0 0 6px 0', borderBottom: '1px dashed #30302e', paddingBottom: '6px', letterSpacing: '0.5px' }}>
-                    Minimum Specs
-                  </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {renderSpecRow('OS', gameSpecs.minimum.os)}
-                    {renderSpecRow('CPU', gameSpecs.minimum.cpu)}
-                    {renderSpecRow('RAM', gameSpecs.minimum.ram)}
-                    {renderSpecRow('GPU', gameSpecs.minimum.gpu)}
-                    {renderSpecRow('DirectX', gameSpecs.minimum.dx)}
-                    {renderSpecRow('Storage', gameSpecs.minimum.storage)}
-                  </div>
-                </div>
-
-                {/* Recommended specs */}
-                <div style={{
-                  background: '#ede9e3',
-                  border: '1.5px solid #30302e',
-                  borderRadius: '16px',
-                  padding: '16px 18px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '10px',
-                }}>
-                  <h4 style={{ fontSize: '11.5px', fontWeight: '900', color: '#4d9e6a', textTransform: 'uppercase', margin: '0 0 6px 0', borderBottom: '1px dashed #30302e', paddingBottom: '6px', letterSpacing: '0.5px' }}>
-                    Recommended Specs
-                  </h4>
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {renderSpecRow('OS', gameSpecs.recommended.os)}
-                    {renderSpecRow('CPU', gameSpecs.recommended.cpu)}
-                    {renderSpecRow('RAM', gameSpecs.recommended.ram)}
-                    {renderSpecRow('GPU', gameSpecs.recommended.gpu)}
-                    {renderSpecRow('DirectX', gameSpecs.recommended.dx)}
-                    {renderSpecRow('Storage', gameSpecs.recommended.storage)}
-                  </div>
-                </div>
+                {renderSpecsContainer('Minimum Specs', minSpecs, game.pcRequirementsMinimum, false)}
+                {renderSpecsContainer('Recommended Specs', recSpecs, game.pcRequirementsRecommended, true)}
               </div>
             </div>
 
@@ -476,6 +527,29 @@ const ImagePreviewModal = ({ game, onClose }) => {
           <span>PRESS [ESC] TO DISMISS VIEW</span>
           <span>SECURE PROTOCOL DATA INCOMING</span>
         </div>
+        {/* CSS block for parsing Steam's raw HTML lists gracefully */}
+        <style>{`
+          .raw-html-specs ul.bb_ul {
+            list-style-type: none !important;
+            padding-left: 0 !important;
+            margin: 0 !important;
+          }
+          .raw-html-specs ul.bb_ul li {
+            margin-bottom: 8px !important;
+            line-height: 1.4 !important;
+            list-style: none !important;
+            font-size: 11px !important;
+            display: block !important;
+          }
+          .raw-html-specs ul.bb_ul li strong {
+            font-weight: 800 !important;
+            color: #87867f !important;
+            text-transform: uppercase !important;
+            font-size: 10px !important;
+            display: inline-block !important;
+            margin-right: 6px !important;
+          }
+        `}</style>
       </div>
     </div>
   );
