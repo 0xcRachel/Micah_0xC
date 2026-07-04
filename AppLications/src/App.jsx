@@ -22,12 +22,12 @@ const App = () => {
   const [currentPage, setCurrentPage] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [selectedGame, setSelectedGame] = useState({
-    title: 'Kaoruko Waguri: Days',
-    developer: 'VisualArts / Key',
-    imageSrc: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=500&auto=format&fit=crop&q=80',
-    score: 96,
+    title: 'Made By 0xcRachel',
+    developer: '0xcRachel',
+    imageSrc: 'https://i.pinimg.com/736x/c4/ea/c5/c4eac5f03beb69fac689e5c844b3db30.jpg',
+    score: 100,
     scoreLabel: 'Overwhelmingly Positive',
-    price: '$19.99',
+    price: '$99.99',
     tags: ['Visual Novel', 'Anime', 'Story Rich']
   });
 
@@ -73,7 +73,7 @@ const App = () => {
         {/* Search bar, Game Card & System Info diagnostics container */}
         <div style={{ width: '600px', maxWidth: '100%', display: 'flex', flexDirection: 'column', gap: '20px' }}>
           <SearchGame onSelectGame={setSelectedGame} />
-          
+
           <ProfileCard
             title={selectedGame.title}
             developer={selectedGame.developer}
