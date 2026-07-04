@@ -4,3 +4,5 @@ skill/
 plugins/
 .agents
 agents
+.agents/skills
+agents/skills

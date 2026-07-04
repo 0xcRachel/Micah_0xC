@@ -55,3 +55,31 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #87867f;
 }
+
+/* Completely hide scrollbar but keep scroll functionality */
+.no-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+/* Minimal 3px hairline scrollbar for panels */
+.thin-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #e6dfd3 transparent;
+}
+.thin-scrollbar::-webkit-scrollbar {
+  width: 3px;
+}
+.thin-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb {
+  background: #e6dfd3;
+  border-radius: 99px;
+}
+.thin-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #c4b99a;
+}
