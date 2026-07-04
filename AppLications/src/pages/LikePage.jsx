@@ -55,12 +55,12 @@ const LikePage = ({ onBack }) => {
           style={{ boxShadow: '0 24px 64px rgba(48,48,46,0.12)' }}
         >
           <h1 className="text-3xl font-black text-[#30302e] tracking-wide mb-3">
-            Cảm ơn bạn!
+            Thanks You!
           </h1>
           <p className="text-sm text-[#87867f] leading-relaxed mb-8">
-            Cảm ơn bạn đã yêu thích ứng dụng.<br />
-            Mọi sự ủng hộ của bạn đều có ý nghĩa với chúng tôi.
-          </p>
+ Thank you for loving the app.<br />
+            Your support means the world to us.         
+      </p>
 
           <a
             href="https://github.com/0xcRachel"

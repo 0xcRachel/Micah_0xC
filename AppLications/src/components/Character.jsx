@@ -63,15 +63,15 @@ const Character = ({
       tl.to(sphere1Ref.current, {
         scale: 1,
         opacity: 1,
-        x: -300,
-        y: -160,
+        x: -240,
+        y: -140,
         duration: 0.45,
         ease: 'back.out(1.7)'
       }, '-=0.05')
         .to(sphere2Ref.current, {
           scale: 1,
           opacity: 1,
-          x: -360,
+          x: -290,
           y: -10,
           duration: 0.45,
           ease: 'back.out(1.7)'
@@ -79,8 +79,8 @@ const Character = ({
         .to(sphere3Ref.current, {
           scale: 1,
           opacity: 1,
-          x: -300,
-          y: 140,
+          x: -240,
+          y: 120,
           duration: 0.45,
           ease: 'back.out(1.7)'
         }, '-=0.3');
