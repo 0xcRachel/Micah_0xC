@@ -1,6 +1,6 @@
 {
-  "minimum_version": "0.1.0",
-  "latest_version": "0.1.0",
+  "minimum_version": "0.2.0",
+  "latest_version": "0.2.0",
   "download_url": "https://github.com/0xcRachel/Micah_0xC/releases/latest/download/Micah_0xC.exe",
-  "release_notes": "Initial release"
+  "release_notes": "Test release notes for version 0.2.0. This release includes several bug fixes and performance improvements."
 }
