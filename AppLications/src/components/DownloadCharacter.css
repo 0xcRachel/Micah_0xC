@@ -1,0 +1,129 @@
+.download-container {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.download-btn {
+  padding: 10px 20px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  z-index: 10;
+  border-radius: 8px;
+}
+
+/* Khung nhìn cắt đúng 1 frame nhân vật */
+.character-viewport {
+  position: absolute;
+  bottom: 20px;
+  /* Thay đổi 2 con số này cho bằng chiều rộng/chiều cao của 1 frame nhân vật trong ảnh gốc */
+  width: 120px;
+  height: 120px;
+  overflow: hidden;
+  transform: translateX(-150vw);
+  opacity: 0;
+}
+
+.sprite-sheet {
+  /* Link đúng tới đường dẫn ảnh của bạn */
+  background-image: url('/animationsChar/ChatGPT Image Jul 8, 2026, 11_33_41 AM.png');
+  background-repeat: no-repeat;
+  width: 10000px;
+  /* Số ảo đủ lớn để chứa cả ảnh */
+  height: 10000px;
+  /* Tọa độ mặc định (IDLE) */
+  background-position: 0px 0px;
+}
+
+/* --- ANIMATION STATES --- */
+
+/* 1. Đang chạy vào (RUN) */
+.character-viewport.run-in {
+  opacity: 1;
+  animation: move-right 1.5s linear forwards;
+}
+
+.character-viewport.run-in .sprite-sheet {
+  /* Tọa độ (Y) kéo ảnh lên để hiển thị đúng dòng "CHẠY (RUN)" */
+  /* Thay -250px bằng khoảng cách từ đỉnh ảnh tới đầu dòng nhân vật chạy */
+  background-position: 0px -250px;
+  /* Dùng steps(8) vì hành động CHẠY có 8 frame */
+  animation: play-sprite 0.8s steps(8) infinite;
+}
+
+/* 2. Nhấc đồ lên (HOLD BOX) */
+.character-viewport.grab {
+  opacity: 1;
+  transform: translateX(0);
+  /* Đứng ở giữa màn hình */
+}
+
+.character-viewport.grab .sprite-sheet {
+  /* Tọa độ (Y) kéo ảnh lên để hiển thị dòng "ÔM THÙNG ĐỒ" */
+  background-position: 0px -500px;
+  /* Có 7 frame ôm đồ */
+  animation: play-sprite-grab 0.8s steps(7) forwards;
+}
+
+/* 3. Ôm đồ chạy đi */
+.character-viewport.run-out {
+  opacity: 1;
+  animation: move-out 2s linear forwards;
+}
+
+.character-viewport.run-out .sprite-sheet {
+  background-position: 0px -500px;
+  /* Vẫn giữ dòng ôm đồ */
+  /* Hoặc nếu muốn lặp lại tư thế ôm đồ đang chạy, ta dùng loop */
+  /* animation: play-sprite-grab 0.8s steps(7) infinite; */
+}
+
+/* --- KEYFRAMES --- */
+@keyframes move-right {
+  from {
+    transform: translateX(-50vw);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes move-out {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(50vw);
+    opacity: 0;
+  }
+}
+
+/* Chạy ngang qua các frame trong bức ảnh. 
+   Thay -960px bằng (Chiều rộng 1 frame x Số frame) */
+@keyframes play-sprite {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-960px);
+  }
+}
+
+@keyframes play-sprite-grab {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-840px);
+  }
+
+  /* 7 frame * 120px */
+}

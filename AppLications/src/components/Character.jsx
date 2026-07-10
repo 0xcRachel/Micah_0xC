@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import charImg from '../../../assets/img/char.png';
@@ -30,19 +30,57 @@ const IconPower = () => (
     <path d="M18.4 6.6a9 9 0 1 1-12.77.04" />
   </svg>
 );
+
+const IconSteam = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+  </svg>
+);
 const Character = ({
   characterImage = CHARACTER_IMAGE_PATH,
   onSettings,
   onLike,
-  onExit
+  onExit,
+  onSteam,
 }) => {
   const containerRef = useRef(null);
   const characterRef = useRef(null);
   const sphere1Ref = useRef(null);
   const sphere2Ref = useRef(null);
   const sphere3Ref = useRef(null);
+  const sphere4Ref = useRef(null);
 
   const [isOpen, setIsOpen] = useState(false);
+  const [displayImage, setDisplayImage] = useState(characterImage);
+  const firstImageUpdate = useRef(true);
+
+  // Sync prop changes with a GSAP transition
+  useEffect(() => {
+    if (firstImageUpdate.current) {
+      firstImageUpdate.current = false;
+      setDisplayImage(characterImage);
+      return;
+    }
+
+    // Animate out, change src, animate in
+    const tl = gsap.timeline();
+    tl.to(characterRef.current, {
+      scale: 0.9,
+      opacity: 0,
+      duration: 0.18,
+      ease: 'power2.in',
+      onComplete: () => {
+        setDisplayImage(characterImage);
+      }
+    });
+    tl.to(characterRef.current, {
+      scale: 1,
+      opacity: 1,
+      duration: 0.35,
+      ease: 'back.out(1.3)',
+    });
+  }, [characterImage]);
 
   const { contextSafe } = useGSAP({ scope: containerRef });
 
@@ -50,7 +88,7 @@ const Character = ({
     if (!isOpen) {
       const tl = gsap.timeline({ onComplete: () => setIsOpen(true) });
 
-      // 1. Character tilts and slides down first
+      // Character tilts and slides down
       tl.to(characterRef.current, {
         y: 40,
         rotation: -3,
@@ -58,38 +96,38 @@ const Character = ({
         ease: 'power2.out'
       });
 
-      // 2. Spheres fly out one by one after character settles
-      // sphere1=Settings goes high+far left, sphere2=Like middle-left, sphere3=Exit lower-left
+      // 4 spheres fan out in an arc:
+      // sphere1=Settings  → upper-far-left
+      // sphere2=Steam     → upper-mid-left
+      // sphere3=Like      → lower-mid-left
+      // sphere4=Exit      → lower-far-left
       tl.to(sphere1Ref.current, {
-        scale: 1,
-        opacity: 1,
-        x: -240,
-        y: -140,
-        duration: 0.45,
-        ease: 'back.out(1.7)'
+        scale: 1, opacity: 1,
+        x: -240, y: -190,
+        duration: 0.45, ease: 'back.out(1.7)'
       }, '-=0.05')
         .to(sphere2Ref.current, {
-          scale: 1,
-          opacity: 1,
-          x: -290,
-          y: -10,
-          duration: 0.45,
-          ease: 'back.out(1.7)'
+          scale: 1, opacity: 1,
+          x: -305, y: -55,
+          duration: 0.45, ease: 'back.out(1.7)'
         }, '-=0.3')
         .to(sphere3Ref.current, {
-          scale: 1,
-          opacity: 1,
-          x: -240,
-          y: 120,
-          duration: 0.45,
-          ease: 'back.out(1.7)'
+          scale: 1, opacity: 1,
+          x: -305, y: 85,
+          duration: 0.45, ease: 'back.out(1.7)'
+        }, '-=0.3')
+        .to(sphere4Ref.current, {
+          scale: 1, opacity: 1,
+          x: -240, y: 220,
+          duration: 0.45, ease: 'back.out(1.7)'
         }, '-=0.3');
 
     } else {
       const tl = gsap.timeline({ onComplete: () => setIsOpen(false) });
 
-      // Spheres spring back with bounce, reverse order
-      tl.to(sphere3Ref.current, { scale: 0, opacity: 0, x: 0, y: 0, duration: 0.35, ease: 'back.in(1.5)' })
+      // Spheres spring back — reverse order
+      tl.to(sphere4Ref.current, { scale: 0, opacity: 0, x: 0, y: 0, duration: 0.35, ease: 'back.in(1.5)' })
+        .to(sphere3Ref.current, { scale: 0, opacity: 0, x: 0, y: 0, duration: 0.35, ease: 'back.in(1.5)' }, '-=0.25')
         .to(sphere2Ref.current, { scale: 0, opacity: 0, x: 0, y: 0, duration: 0.35, ease: 'back.in(1.5)' }, '-=0.25')
         .to(sphere1Ref.current, { scale: 0, opacity: 0, x: 0, y: 0, duration: 0.35, ease: 'back.in(1.5)' }, '-=0.25');
 
@@ -122,7 +160,7 @@ const Character = ({
       <div
         ref={containerRef}
         className="absolute inset-0 pointer-events-none flex items-center justify-center"
-        style={{ zIndex: 2 }}
+        style={{ zIndex: isOpen ? 10 : 2 }}
       >
         <button
           ref={sphere1Ref}
@@ -138,6 +176,18 @@ const Character = ({
         </button>
         <button
           ref={sphere2Ref}
+          onClick={onSteam}
+          className="absolute w-14 h-14 rounded-full flex items-center justify-center pointer-events-auto
+            bg-[#30302e]/90 text-[#e6dfd3] shadow-2xl border border-[#e6dfd3]/10
+            backdrop-blur-sm cursor-pointer opacity-0
+            hover:bg-[#4d9e6a] hover:text-white transition-colors duration-200"
+          style={{ scale: 0 }}
+          title="Micah0xC Manager"
+        >
+          <IconSteam />
+        </button>
+        <button
+          ref={sphere3Ref}
           onClick={onLike}
           className="absolute w-14 h-14 rounded-full flex items-center justify-center pointer-events-auto
             bg-[#30302e]/90 text-[#e6dfd3] shadow-2xl border border-[#e6dfd3]/10
@@ -149,7 +199,7 @@ const Character = ({
           <IconHeart />
         </button>
         <button
-          ref={sphere3Ref}
+          ref={sphere4Ref}
           onClick={onExit}
           className="absolute w-14 h-14 rounded-full flex items-center justify-center pointer-events-auto
             bg-[#30302e]/90 text-[#e6dfd3] shadow-2xl border border-[#e6dfd3]/10
@@ -169,10 +219,10 @@ const Character = ({
         className="absolute inset-0 flex items-end justify-center pointer-events-none"
         style={{ zIndex: 3 }}
       >
-        {(characterImage || CHARACTER_IMAGE_PATH) ? (
+        {(displayImage || CHARACTER_IMAGE_PATH) ? (
           <img
             ref={characterRef}
-            src={characterImage || CHARACTER_IMAGE_PATH}
+            src={displayImage || CHARACTER_IMAGE_PATH}
             alt="Character"
             onClick={toggleOpen}
             className="h-[110%] object-contain object-bottom cursor-pointer pointer-events-auto"

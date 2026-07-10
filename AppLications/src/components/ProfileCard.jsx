@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
+import { invoke } from '@tauri-apps/api/core';
 
 // Register GSAP hook
 gsap.registerPlugin(useGSAP);
@@ -22,6 +23,7 @@ const GameCard = ({
   className  = '',
   style      = {},
   onClick,
+  appid,
   // backward compat
   name,
   subtitle,
@@ -42,6 +44,23 @@ const GameCard = ({
 
   const cardRef = useRef(null);
   const firstUpdate = useRef(true);
+  const [manifestStatus, setManifestStatus] = useState('idle'); // idle, checking, found, not_found, error
+
+  const handleCheckManifest = async (e) => {
+    e.stopPropagation(); // Stop parent onClick modal trigger
+    if (!appid) return;
+    setManifestStatus('checking');
+    try {
+      const response = await fetch(`https://api.github.com/repos/SSMGAlt/ManifestHub2/branches/${appid}`);
+      if (response.status === 200) {
+        setManifestStatus('found');
+      } else {
+        setManifestStatus('not_found');
+      }
+    } catch {
+      setManifestStatus('error');
+    }
+  };
 
   const sc = Math.max(0, Math.min(100, displayGame.score));
   const hasScore = sc > 0 && displayGame.scoreLabel !== 'N/A';
@@ -103,14 +122,15 @@ const GameCard = ({
         display: 'flex',
         borderRadius: '20px',
         overflow: 'hidden',
-        background: '#faf9f6',
-        border: '2px solid #30302e',
-        boxShadow: '0 6px 0 #30302e, 0 12px 28px rgba(48,48,46,0.08)',
+        background: 'var(--card-bg)',
+        border: '2px solid var(--card-border)',
+        boxShadow: '0 6px 0 var(--card-shadow), 0 12px 28px rgba(0,0,0,var(--shadow-opacity))',
         userSelect: 'none',
         fontFamily: "'Outfit', 'Segoe UI', sans-serif",
         minHeight: '200px',
         cursor: onClick ? 'pointer' : 'default',
         transformOrigin: 'center center',
+        transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
         ...style,
       }}
     >
@@ -120,14 +140,15 @@ const GameCard = ({
         style={{
           width: '105px',
           flexShrink: 0,
-          background: '#f0eee6', // Soft light beige instead of dark grey
+          background: 'var(--card-bg-alt)', // Soft light beige instead of dark grey
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           gap: '4px',
           padding: '12px 6px',
-          borderRight: '2px solid #30302e',
+          borderRight: '2px solid var(--card-border)',
+          transition: 'background-color 0.15s, border-color 0.15s',
         }}
       >
         {/* Score circle */}
@@ -138,19 +159,20 @@ const GameCard = ({
             height: '60px',
             borderRadius: '50%',
             border: `3px solid ${sColor}`,
-            background: '#faf9f6',
+            background: 'var(--card-bg)',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
             boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+            transition: 'background-color 0.15s, border-color 0.15s',
           }}
         >
           {hasScore ? (
             <span style={{
               fontSize: '22px',
               fontWeight: '900',
-              color: '#30302e',
+              color: 'var(--text-color)',
               lineHeight: 1,
             }}>{sc}</span>
           ) : (
@@ -167,9 +189,10 @@ const GameCard = ({
         <div style={{
           width: '48px',
           height: '1.5px',
-          background: '#30302e',
+          background: 'var(--card-border)',
           opacity: 0.15,
           margin: '4px 0',
+          transition: 'background-color 0.15s',
         }} />
 
         {/* Score label */}
@@ -189,7 +212,7 @@ const GameCard = ({
         <span style={{
           fontSize: '7px',
           fontWeight: '800',
-          color: '#87867f',
+          color: 'var(--text-muted)',
           letterSpacing: '1px',
           marginTop: '2px',
         }}>REVIEW</span>
@@ -205,9 +228,10 @@ const GameCard = ({
           margin: '12px 0 12px 12px',
           borderRadius: '14px',
           overflow: 'hidden',
-          border: '2px solid #30302e',
-          background: '#e8e3db',
+          border: '2px solid var(--card-border)',
+          background: 'var(--card-bg-alt)',
           position: 'relative',
+          transition: 'border-color 0.15s, background-color 0.15s',
         }}
       >
         {displayGame.imageSrc ? (
@@ -228,7 +252,7 @@ const GameCard = ({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#b0a99e',
+            color: 'var(--text-muted)',
             fontSize: '11px',
             flexDirection: 'column',
             gap: '6px',
@@ -258,7 +282,7 @@ const GameCard = ({
           style={{
             fontSize: '17px',
             fontWeight: '900',
-            color: '#30302e',
+            color: 'var(--text-color)',
             letterSpacing: '0.1px',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
@@ -274,7 +298,7 @@ const GameCard = ({
           style={{
             fontSize: '11px',
             fontWeight: '500',
-            color: '#87867f',
+            color: 'var(--text-muted)',
             marginTop: '3px',
             whiteSpace: 'nowrap',
             overflow: 'hidden',
@@ -289,9 +313,10 @@ const GameCard = ({
           className="info-element"
           style={{
             height: '1.5px',
-            background: '#30302e',
+            background: 'var(--card-border)',
             opacity: 0.15,
             margin: '10px 0',
+            transition: 'background-color 0.15s',
           }}
         />
 
@@ -308,19 +333,107 @@ const GameCard = ({
         >
           {visibleTags.map((tag, i) => (
             <span key={i} style={{
-              background: '#f0eee6',
-              color: '#30302e',
-              border: '1.5px solid #30302e',
+              background: 'var(--tag-bg)',
+              color: 'var(--text-color)',
+              border: '1.5px solid var(--card-border)',
               fontSize: '10px',
               fontWeight: '700',
               padding: '3px 8px',
               borderRadius: '99px',
               whiteSpace: 'nowrap',
+              transition: 'background-color 0.15s, border-color 0.15s, color 0.15s',
             }}>
               {tag}
             </span>
           ))}
         </div>
+
+        {/* Manifest Database quick action buttons */}
+        {appid && (
+          <div className="info-element" style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '9px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+              Manifest:
+            </span>
+            {manifestStatus === 'idle' && (
+              <button
+                onClick={handleCheckManifest}
+                style={{
+                  background: 'var(--tag-bg)',
+                  color: 'var(--text-color)',
+                  border: '1.5px solid var(--card-border)',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  fontSize: '9.5px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.15s'
+                }}
+                className="hover:bg-[var(--button-hover-bg)]"
+              >
+                Check
+              </button>
+            )}
+            {manifestStatus === 'checking' && (
+              <span style={{ fontSize: '9.5px', fontWeight: '700', color: 'var(--text-muted)' }}>Checking...</span>
+            )}
+            {manifestStatus === 'found' && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  invoke('download_manifest_direct', { appid })
+                    .then(msg => alert(msg))
+                    .catch(err => alert(`Error: ${err}`));
+                }}
+                style={{
+                  background: '#4d9e6a',
+                  color: '#fff',
+                  border: '1.5px solid var(--card-border)',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  fontSize: '9.5px',
+                  fontWeight: '800',
+                  cursor: 'pointer'
+                }}
+              >
+                Download (.zip)
+              </button>
+            )}
+            {manifestStatus === 'not_found' && (
+              <button
+                onClick={handleCheckManifest}
+                style={{
+                  background: '#b85040',
+                  color: '#fff',
+                  border: '1.5px solid var(--card-border)',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  fontSize: '9.5px',
+                  fontWeight: '800',
+                  cursor: 'pointer'
+                }}
+              >
+                N/A (Retry)
+              </button>
+            )}
+            {manifestStatus === 'error' && (
+              <button
+                onClick={handleCheckManifest}
+                style={{
+                  background: '#c49a3a',
+                  color: '#fff',
+                  border: '1.5px solid var(--card-border)',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  fontSize: '9.5px',
+                  fontWeight: '800',
+                  cursor: 'pointer'
+                }}
+              >
+                Err (Retry)
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Bottom row: Price badge + Steam label (never overlaps now due to more space) */}
         <div
@@ -334,23 +447,31 @@ const GameCard = ({
         >
           {/* Price badge */}
           <span style={{
-            background: '#30302e',
-            color: '#faf9f6',
+            background: 'var(--card-border)',
+            color: 'var(--card-bg)',
             fontSize: '12px',
             fontWeight: '800',
             padding: '4px 12px',
             borderRadius: '6px',
+            transition: 'background-color 0.15s, color 0.15s',
           }}>
             {displayGame.price}
           </span>
 
           {/* Steam Label (compact, elegant) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            {/* Soft green online indicator */}
-            <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#4d9e6a' }} />
+            {/* Soft led online indicator */}
+            <div style={{
+              width: '6px',
+              height: '6px',
+              borderRadius: '50%',
+              background: 'var(--led-color)',
+              boxShadow: '0 0 6px var(--led-color)',
+              transition: 'background-color 0.15s, box-shadow 0.15s',
+            }} />
             <span style={{
               fontSize: '8.5px',
-              color: '#87867f',
+              color: 'var(--text-muted)',
               fontWeight: '800',
               textTransform: 'uppercase',
               letterSpacing: '0.5px',

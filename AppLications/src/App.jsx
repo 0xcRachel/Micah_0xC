@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { closeWindow } from './api';
 import IntroOverlay from './components/IntroOverlay';
 import Background from './components/Background';
 import Character from './components/Character';
@@ -11,14 +12,20 @@ import ProfileCard from './components/ProfileCard';
 import SearchGame from './components/SearchGame';
 import SystemInfoCard from './components/SystemInfoCard';
 import ImagePreviewModal from './components/ImagePreviewModal';
+import SteamManager from './components/SteamManager';
+
+import charLight from '../../assets/img/char.png';
+import charDark from '../../assets/img/dark_mode_char.png';
 import './App.css';
 
 gsap.registerPlugin(useGSAP);
 
-// Page names: null | 'settings' | 'like'
+// Page names: null | 'settings' | 'like' | 'steam'
 const App = () => {
   const containerRef = useRef(null);
   const contentRef = useRef(null);
+  const transitionCircleRef = useRef(null);
+
   const [currentPage, setCurrentPage] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
   const [selectedGame, setSelectedGame] = useState({
@@ -31,9 +38,31 @@ const App = () => {
     tags: ['Visual Novel', 'Anime', 'Story Rich']
   });
 
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return localStorage.getItem('setting_darkMode') === 'true';
+  });
+
+  const [animationsEnabled, setAnimationsEnabled] = useState(() => {
+    const saved = localStorage.getItem('setting_animations');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  // Apply dark mode class to body on mount/update
+  React.useEffect(() => {
+    if (isDarkMode) {
+      document.body.classList.add('dark-mode');
+    } else {
+      document.body.classList.remove('dark-mode');
+    }
+  }, [isDarkMode]);
+
   useGSAP(() => {
-    gsap.set(contentRef.current, { filter: 'blur(16px)' });
-  }, { scope: containerRef });
+    if (animationsEnabled) {
+      gsap.set(contentRef.current, { filter: 'blur(16px)' });
+    } else {
+      gsap.set(contentRef.current, { filter: 'blur(0px)' });
+    }
+  }, { scope: containerRef, dependencies: [animationsEnabled] });
 
   const handleCovered = () => {
     gsap.set(contentRef.current, { filter: 'blur(0px)' });
@@ -44,26 +73,119 @@ const App = () => {
   };
 
   const handleBack = () => {
-    // Called AFTER the page's own exit animation completes
     setCurrentPage(null);
   };
 
   const handleExit = async () => {
     try {
-      const win = await getCurrentWindow();
-      await win.close();
+      await closeWindow();
     } catch {
-      window.close();
+      try {
+        const win = await getCurrentWindow();
+        await win.close();
+      } catch {
+        window.close();
+      }
     }
   };
 
+  const { contextSafe } = useGSAP({ scope: containerRef });
+
+  const handleToggleDarkMode = contextSafe((nextVal) => {
+    // 1. Calculate transition starting coordinates
+    let startX = window.innerWidth / 2;
+    let startY = window.innerHeight / 2;
+
+    // Try to get dark-mode-toggle button position in DOM
+    const toggleButton = document.getElementById('dark-mode-toggle');
+    if (toggleButton) {
+      const rect = toggleButton.getBoundingClientRect();
+      startX = rect.left + rect.width / 2;
+      startY = rect.top + rect.height / 2;
+    }
+
+    // Determine target color based on transition
+    const targetBgColor = nextVal ? '#161615' : '#f8f6f0';
+
+    // 2. Position the transition circle and make it visible
+    gsap.set(transitionCircleRef.current, {
+      left: startX,
+      top: startY,
+      xPercent: -50,
+      yPercent: -50,
+      background: targetBgColor,
+      display: 'block',
+      scale: 0,
+      opacity: 1,
+    });
+
+    // 3. Calculate max scale required to cover screen corners from start position
+    const dx = Math.max(startX, window.innerWidth - startX);
+    const dy = Math.max(startY, window.innerHeight - startY);
+    const radius = Math.sqrt(dx * dx + dy * dy);
+    const targetScale = (radius / 10) * 1.05; // circle radius is 10px (width 20px)
+
+    // 4. Run transition timeline
+    const tl = gsap.timeline();
+
+    // Growth phase: scale up the circle to completely engulf the screen
+    tl.to(transitionCircleRef.current, {
+      scale: targetScale,
+      duration: 0.6,
+      ease: 'power2.in',
+    });
+
+    // Swapping phase: swap theme classes & state behind the solid screen cover
+    tl.add(() => {
+      setIsDarkMode(nextVal);
+      localStorage.setItem('setting_darkMode', String(nextVal));
+    });
+
+    // Reveal phase: smoothly fade the overlay out
+    tl.to(transitionCircleRef.current, {
+      opacity: 0,
+      duration: 0.45,
+      ease: 'power2.out',
+    });
+
+    // Clean up phase: hide transition element
+    tl.add(() => {
+      gsap.set(transitionCircleRef.current, { display: 'none' });
+    });
+  });
+
+  const handleToggleAnimations = (nextVal) => {
+    setAnimationsEnabled(nextVal);
+    localStorage.setItem('setting_animations', String(nextVal));
+  };
+
+  const characterImage = isDarkMode ? charDark : charLight;
+
   return (
     <div ref={containerRef} className="min-h-screen relative overflow-hidden select-none">
-      <IntroOverlay
-        onCovered={handleCovered}
-        onComplete={() => { }}
-      />
+      {animationsEnabled && (
+        <IntroOverlay
+          onCovered={handleCovered}
+          onComplete={() => { }}
+        />
+      )}
       <Background />
+
+      {/* Circle Transition Overlay */}
+      <div
+        ref={transitionCircleRef}
+        style={{
+          position: 'fixed',
+          zIndex: 9999,
+          width: '20px',
+          height: '20px',
+          borderRadius: '50%',
+          pointerEvents: 'none',
+          transform: 'scale(0)',
+          transformOrigin: 'center center',
+          display: 'none',
+        }}
+      />
 
       {/* Home content */}
       <div
@@ -82,6 +204,7 @@ const App = () => {
             scoreLabel={selectedGame.scoreLabel}
             price={selectedGame.price}
             tags={selectedGame.tags}
+            appid={selectedGame.appid}
             onClick={() => setShowPreview(true)}
           />
 
@@ -92,18 +215,29 @@ const App = () => {
       {/* Character — always rendered, lives on top of home */}
       <div className="absolute bottom-0 right-0 w-[50vw] h-[85vh] pointer-events-none z-20">
         <Character
+          characterImage={characterImage}
           onSettings={() => navigateTo('settings')}
           onLike={() => navigateTo('like')}
           onExit={handleExit}
+          onSteam={() => navigateTo('steam')}
         />
       </div>
 
       {/* Full-screen pages — mount only when active, unmount after exit animation */}
       {currentPage === 'settings' && (
-        <SettingsPage onBack={handleBack} />
+        <SettingsPage
+          onBack={handleBack}
+          isDarkMode={isDarkMode}
+          onToggleDarkMode={handleToggleDarkMode}
+          animationsEnabled={animationsEnabled}
+          onToggleAnimations={handleToggleAnimations}
+        />
       )}
       {currentPage === 'like' && (
         <LikePage onBack={handleBack} />
+      )}
+      {currentPage === 'steam' && (
+        <SteamManager onBack={handleBack} />
       )}
 
       {/* Image Preview Modal (Lightbox) */}

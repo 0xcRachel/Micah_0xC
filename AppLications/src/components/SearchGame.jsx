@@ -210,16 +210,16 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
       {/* Stable hover/press wrapper to avoid GSAP jitter */}
       <div
         onMouseEnter={() => {
-          gsap.to(inputRef.current, { y: -3, boxShadow: '0 6px 0 #30302e', duration: 0.18, ease: 'power2.out' });
+          gsap.to(inputRef.current, { y: -3, boxShadow: '0 6px 0 var(--card-shadow)', duration: 0.18, ease: 'power2.out' });
         }}
         onMouseLeave={() => {
-          gsap.to(inputRef.current, { y: 0, boxShadow: '0 4px 0 #30302e', duration: 0.18, ease: 'power2.out' });
+          gsap.to(inputRef.current, { y: 0, boxShadow: '0 4px 0 var(--card-shadow)', duration: 0.18, ease: 'power2.out' });
         }}
         onMouseDown={() => {
-          gsap.to(inputRef.current, { y: 2, boxShadow: '0 2px 0 #30302e', duration: 0.08 });
+          gsap.to(inputRef.current, { y: 2, boxShadow: '0 2px 0 var(--card-shadow)', duration: 0.08 });
         }}
         onMouseUp={() => {
-          gsap.to(inputRef.current, { y: -3, boxShadow: '0 6px 0 #30302e', duration: 0.12, ease: 'back.out(1.2)' });
+          gsap.to(inputRef.current, { y: -3, boxShadow: '0 6px 0 var(--card-shadow)', duration: 0.12, ease: 'back.out(1.2)' });
         }}
         style={{ paddingBottom: '6px', cursor: 'pointer' }}
       >
@@ -229,15 +229,16 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
           style={{
             display: 'flex',
             alignItems: 'center',
-            background: '#faf9f6',
-            border: '2px solid #30302e',
+            background: 'var(--card-bg)',
+            border: '2px solid var(--card-border)',
             borderRadius: '16px',
             padding: '8px 16px',
-            boxShadow: '0 4px 0 #30302e',
+            boxShadow: '0 4px 0 var(--card-shadow)',
+            transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
           }}
         >
           {/* Search icon */}
-          <span ref={iconRef} style={{ display: 'inline-flex', marginRight: '10px', color: '#87867f' }}>
+          <span ref={iconRef} style={{ display: 'inline-flex', marginRight: '10px', color: 'var(--text-muted)' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -259,14 +260,14 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
               background: 'transparent',
               fontFamily: 'inherit',
               fontSize: '14px',
-              color: '#30302e',
+              color: 'var(--text-color)',
               fontWeight: '500',
             }}
           />
 
           {/* Loading spinner or clear button */}
           {isLoading ? (
-            <span style={{ display: 'inline-flex', color: '#87867f' }}>
+            <span style={{ display: 'inline-flex', color: 'var(--text-muted)' }}>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
                 style={{ animation: 'spin 0.8s linear infinite' }}>
                 <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
@@ -280,7 +281,7 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
                 setResults([]);
                 setIsOpen(false);
               }}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#87867f', padding: '2px', display: 'inline-flex' }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '2px', display: 'inline-flex' }}
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
@@ -299,15 +300,16 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
             top: 'calc(100% + 8px)',
             left: 0,
             right: 0,
-            background: '#faf9f6',
-            border: '2px solid #30302e',
+            background: 'var(--card-bg)',
+            border: '2px solid var(--card-border)',
             borderRadius: '16px',
-            boxShadow: '0 6px 0 #30302e, 0 16px 32px rgba(48,48,46,0.12)',
+            boxShadow: '0 6px 0 var(--card-shadow), 0 16px 32px rgba(0,0,0,var(--shadow-opacity))',
             zIndex: 200,
             maxHeight: '280px',
             overflowY: 'auto',
             transformOrigin: 'top center',
             padding: '8px',
+            transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
           }}
           className="thin-scrollbar"
         >
@@ -325,7 +327,7 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
                 cursor: 'pointer',
                 transition: 'background-color 0.15s',
               }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#ede9e3'}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--button-hover-bg)'}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             >
               {/* Thumbnail */}
@@ -337,20 +339,20 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
                   height: '30px',
                   objectFit: 'cover',
                   borderRadius: '5px',
-                  border: '1px solid #ddd8ce',
+                  border: '1px solid var(--card-border)',
                 }}
               />
               {/* Game name */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: '13px', fontWeight: '700', color: '#30302e', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: 'var(--text-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                   {item.name}
                 </div>
-                <div style={{ fontSize: '10px', color: '#87867f' }}>
+                <div style={{ fontSize: '10px', color: 'var(--text-muted)' }}>
                   App ID: {item.appid}
                 </div>
               </div>
               {/* Arrow indicator */}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#87867f" strokeWidth="2.5">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2.5">
                 <line x1="5" y1="12" x2="19" y2="12" />
                 <polyline points="12 5 19 12 12 19" />
               </svg>
@@ -373,12 +375,14 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'rgba(250,249,246,0.7)',
+          background: 'var(--card-bg)',
+          opacity: 0.85,
           borderRadius: '16px',
           fontSize: '12px',
           fontWeight: '700',
-          color: '#87867f',
+          color: 'var(--text-muted)',
           gap: '8px',
+          backdropFilter: 'blur(3px)',
         }}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
             style={{ animation: 'spin 0.8s linear infinite' }}>

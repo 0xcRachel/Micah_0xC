@@ -6,3 +6,19 @@ plugins/
 agents
 .agents/skills
 agents/skills
+
+# Build artifacts
+target/
+dist/
+*.o
+*.so
+*.dylib
+
+# Core source code (keep private)
+AppLications/src-tauri/src/lib.rs
+AppLications/src-tauri/src/main.rs
+AppLications/src-tauri/src/manager.rs
+
+# Dependencies
+AppLications/src-tauri/Cargo.lock
+AppLications/package-lock.json

@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "AppLications",
+  "productName": "Micah_0xC",
   "version": "0.1.0",
-  "identifier": "com.tauri.dev",
+  "identifier": "com.micah0xc.app",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:3000",
@@ -12,20 +12,21 @@
   "app": {
     "windows": [
       {
-        "title": "AppLications",
-        "width": 800,
-        "height": 600,
+        "width": 1380,
+        "height": 760,
+        "center": true,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "devtools": true
       }
-    ],
-    "security": {
-      "csp": null
-    }
+    ]
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": [
+      "resources/dlls/*"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -35,6 +36,14 @@
     ],
     "android": {
       "debugApplicationIdSuffix": ".debug"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW1teV9wdWJsaWNfa2V5X2R1bW15X3B1YmxpY19rZXk=",
+      "endpoints": [
+        "https://github.com/0xcRachel/Micah_0xC/releases/latest/download/latest.json"
+      ]
     }
   }
 }

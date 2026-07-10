@@ -1,6 +1,7 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
+import { invoke } from '@tauri-apps/api/core';
 
 gsap.registerPlugin(useGSAP);
 
@@ -129,8 +130,24 @@ const scoreColor = (s) =>
 const ImagePreviewModal = ({ game, onClose }) => {
   const overlayRef = useRef(null);
   const modalRef = useRef(null);
+  const [manifestStatus, setManifestStatus] = useState('idle'); // idle, checking, found, not_found, error
 
   if (!game) return null;
+
+  const handleCheckManifest = async () => {
+    if (!game.appid) return;
+    setManifestStatus('checking');
+    try {
+      const response = await fetch(`https://api.github.com/repos/SSMGAlt/ManifestHub2/branches/${game.appid}`);
+      if (response.status === 200) {
+        setManifestStatus('found');
+      } else {
+        setManifestStatus('not_found');
+      }
+    } catch {
+      setManifestStatus('error');
+    }
+  };
 
   const sc = Math.max(0, Math.min(100, game.score || 0));
   const hasScore = sc > 0 && game.scoreLabel !== 'N/A';
@@ -200,10 +217,10 @@ const ImagePreviewModal = ({ game, onClose }) => {
   // Helper to render aligned system specification rows
   const renderSpecRow = (label, value) => (
     <div style={{ display: 'grid', gridTemplateColumns: '75px 1fr', gap: '8px', marginBottom: '8px', lineHeight: '1.4' }}>
-      <span style={{ fontSize: '10.5px', fontWeight: '800', color: '#87867f', textTransform: 'uppercase' }}>
+      <span style={{ fontSize: '10.5px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
         {label}
       </span>
-      <span style={{ fontSize: '11px', fontWeight: '600', color: '#30302e' }}>
+      <span style={{ fontSize: '11px', fontWeight: '600', color: 'var(--text-color)' }}>
         {value}
       </span>
     </div>
@@ -211,18 +228,18 @@ const ImagePreviewModal = ({ game, onClose }) => {
 
   const renderSpecsContainer = (title, specs, rawHtml, isRecommended) => {
     const titleColor = isRecommended ? '#4d9e6a' : '#b85040';
-    const bgColor = isRecommended ? '#ede9e3' : '#f4f2ed';
+    const bgColor = isRecommended ? 'var(--card-bg-alt)' : 'var(--bg-grid)';
     
     return (
       <div style={{
         background: bgColor,
-        border: '1.5px solid #30302e',
+        border: '1.5px solid var(--card-border)',
         borderRadius: '16px',
         padding: '16px 18px',
         display: 'flex',
         flexDirection: 'column',
         gap: '10px',
-        boxShadow: '0 2px 0 #30302e',
+        boxShadow: '0 2px 0 var(--card-shadow)',
         maxHeight: '260px',
         overflowY: 'auto',
       }} className="thin-scrollbar">
@@ -232,7 +249,7 @@ const ImagePreviewModal = ({ game, onClose }) => {
           color: titleColor, 
           textTransform: 'uppercase', 
           margin: '0 0 6px 0', 
-          borderBottom: '1px dashed #30302e', 
+          borderBottom: '1px dashed var(--card-border)', 
           paddingBottom: '6px', 
           letterSpacing: '0.5px' 
         }}>
@@ -253,13 +270,13 @@ const ImagePreviewModal = ({ game, onClose }) => {
             style={{ 
               fontSize: '10.5px', 
               fontWeight: '600', 
-              color: '#30302e',
+              color: 'var(--text-color)',
               lineHeight: '1.5'
             }}
             dangerouslySetInnerHTML={{ __html: rawHtml }}
           />
         ) : (
-          <span style={{ fontSize: '11px', color: '#87867f', fontWeight: '600' }}>N/A</span>
+          <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: '600' }}>N/A</span>
         )}
       </div>
     );
@@ -286,10 +303,10 @@ const ImagePreviewModal = ({ game, onClose }) => {
         ref={modalRef}
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: '#faf9f6',
-          border: '2px solid #30302e',
+          background: 'var(--card-bg)',
+          border: '2px solid var(--card-border)',
           borderRadius: '24px',
-          boxShadow: '0 8px 0 #30302e, 0 24px 48px rgba(48,48,46,0.18)',
+          boxShadow: '0 8px 0 var(--card-shadow), 0 24px 48px rgba(0,0,0,var(--shadow-opacity))',
           overflow: 'hidden',
           width: '860px',
           maxWidth: '90vw',
@@ -298,6 +315,7 @@ const ImagePreviewModal = ({ game, onClose }) => {
           display: 'flex',
           flexDirection: 'column',
           cursor: 'default',
+          transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
         }}
       >
         {/* Top Header Bar (Cleaner, Emojis Removed) */}
@@ -306,14 +324,15 @@ const ImagePreviewModal = ({ game, onClose }) => {
           justifyContent: 'space-between',
           alignItems: 'center',
           padding: '14px 24px',
-          borderBottom: '2px solid #30302e',
-          background: '#f4f2ed',
+          borderBottom: '2px solid var(--card-border)',
+          background: 'var(--bg-grid)',
+          transition: 'background-color 0.15s, border-color 0.15s',
         }}>
           <span style={{
             fontFamily: "'Outfit', sans-serif",
             fontWeight: '900',
             fontSize: '13px',
-            color: '#30302e',
+            color: 'var(--text-color)',
             textTransform: 'uppercase',
             letterSpacing: '1px',
           }}>
@@ -324,7 +343,7 @@ const ImagePreviewModal = ({ game, onClose }) => {
             style={{
               background: 'transparent',
               border: 'none',
-              color: '#30302e',
+              color: 'var(--text-color)',
               cursor: 'pointer',
               fontWeight: '900',
               fontSize: '18px',
@@ -336,7 +355,7 @@ const ImagePreviewModal = ({ game, onClose }) => {
               borderRadius: '50%',
               transition: 'background-color 0.2s',
             }}
-            className="hover:bg-[#ede9e3]"
+            className="hover:bg-[var(--button-hover-bg)]"
           >
             ✕
           </button>
@@ -348,21 +367,23 @@ const ImagePreviewModal = ({ game, onClose }) => {
           {/* Left panel - Static Visual Column */}
           <div style={{
             width: '270px',
-            background: '#f0eee6',
-            borderRight: '2px solid #30302e',
+            background: 'var(--card-bg-alt)',
+            borderRight: '2px solid var(--card-border)',
             display: 'flex',
             flexDirection: 'column',
             padding: '24px 20px',
             gap: '18px',
+            transition: 'background-color 0.15s, border-color 0.15s',
           }}>
             {/* Image Cover */}
             <div style={{
               borderRadius: '16px',
               overflow: 'hidden',
-              border: '2px solid #30302e',
+              border: '2px solid var(--card-border)',
               height: '145px',
-              background: '#e8e3db',
-              boxShadow: '0 3px 0 #30302e',
+              background: 'var(--card-bg-alt)',
+              boxShadow: '0 3px 0 var(--card-shadow)',
+              transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
             }}>
               {game.imageSrc ? (
                 <img
@@ -371,7 +392,7 @@ const ImagePreviewModal = ({ game, onClose }) => {
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
               ) : (
-                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#b0a99e' }}>
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
                   No Cover
                 </div>
               )}
@@ -379,15 +400,16 @@ const ImagePreviewModal = ({ game, onClose }) => {
 
             {/* Score info */}
             <div style={{
-              background: '#faf9f6',
-              border: '2px solid #30302e',
+              background: 'var(--card-bg)',
+              border: '2px solid var(--card-border)',
               borderRadius: '16px',
               padding: '16px 12px',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               gap: '8px',
-              boxShadow: '0 4px 0 #30302e',
+              boxShadow: '0 4px 0 var(--card-shadow)',
+              transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
             }}>
               <div style={{
                 width: '64px',
@@ -399,8 +421,9 @@ const ImagePreviewModal = ({ game, onClose }) => {
                 justifyContent: 'center',
                 fontWeight: '900',
                 fontSize: '22px',
-                color: hasScore ? '#30302e' : '#b0aca4',
-                background: '#f4f2ed',
+                color: hasScore ? 'var(--text-color)' : '#b0aca4',
+                background: 'var(--bg-grid)',
+                transition: 'background-color 0.15s, border-color 0.15s, color 0.15s',
               }}>
                 {hasScore ? sc : '?'}
               </div>
@@ -411,17 +434,127 @@ const ImagePreviewModal = ({ game, onClose }) => {
 
             {/* Price tag */}
             <div style={{
-              background: '#30302e',
-              color: '#faf9f6',
+              background: 'var(--card-border)',
+              color: 'var(--card-bg)',
               borderRadius: '12px',
               padding: '12px 8px',
               textAlign: 'center',
               fontWeight: '900',
               fontSize: '16px',
-              boxShadow: '0 3px 0 rgba(0,0,0,0.15)',
+              boxShadow: '0 3px 0 rgba(0,0,0,var(--shadow-opacity))',
+              transition: 'background-color 0.15s, color 0.15s',
             }}>
               {game.price}
             </div>
+
+            {/* Manifest checking section inside modal */}
+            {game.appid && (
+              <div style={{
+                background: 'var(--card-bg)',
+                border: '2px solid var(--card-border)',
+                borderRadius: '16px',
+                padding: '14px 12px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '8px',
+                boxShadow: '0 4px 0 var(--card-shadow)',
+                transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
+              }}>
+                <span style={{ fontSize: '10px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  Manifest Database
+                </span>
+                
+                {manifestStatus === 'idle' && (
+                  <button
+                    onClick={handleCheckManifest}
+                    style={{
+                      background: 'var(--tag-bg)',
+                      color: 'var(--text-color)',
+                      border: '1.5px solid var(--card-border)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      fontSize: '11px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      width: '100%',
+                      transition: 'background-color 0.15s'
+                    }}
+                    className="hover:bg-[var(--button-hover-bg)]"
+                  >
+                    Check Manifest & Lua
+                  </button>
+                )}
+
+                {manifestStatus === 'checking' && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '6px 0' }}>
+                    <span className="sm-spinner" style={{ width: '12px', height: '12px', border: '2px solid var(--text-color)', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'sm-spin 0.8s linear infinite' }} />
+                    <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>Checking GitHub...</span>
+                  </div>
+                )}
+
+                {manifestStatus === 'found' && (
+                  <button
+                    onClick={() => {
+                      invoke('download_manifest_direct', { appid: game.appid })
+                        .then(msg => alert(msg))
+                        .catch(err => alert(`Error: ${err}`));
+                    }}
+                    style={{
+                      background: '#4d9e6a',
+                      color: '#fff',
+                      border: '1.5px solid var(--card-border)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      fontSize: '11px',
+                      fontWeight: '800',
+                      textAlign: 'center',
+                      cursor: 'pointer',
+                      width: '100%'
+                    }}
+                  >
+                    Download Manifest (.zip)
+                  </button>
+                )}
+
+                {manifestStatus === 'not_found' && (
+                  <button
+                    onClick={handleCheckManifest}
+                    style={{
+                      background: '#b85040',
+                      color: '#fff',
+                      border: '1.5px solid var(--card-border)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      fontSize: '11px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      width: '100%'
+                    }}
+                  >
+                    Not Found (Retry)
+                  </button>
+                )}
+
+                {manifestStatus === 'error' && (
+                  <button
+                    onClick={handleCheckManifest}
+                    style={{
+                      background: '#c49a3a',
+                      color: '#fff',
+                      border: '1.5px solid var(--card-border)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                      fontSize: '11px',
+                      fontWeight: '800',
+                      cursor: 'pointer',
+                      width: '100%'
+                    }}
+                  >
+                    Check Error (Retry)
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Right panel - Scrollable details */}
@@ -434,34 +567,36 @@ const ImagePreviewModal = ({ game, onClose }) => {
               display: 'flex',
               flexDirection: 'column',
               gap: '24px',
-              background: '#faf9f6',
+              background: 'var(--card-bg)',
+              transition: 'background-color 0.15s',
             }}
           >
             {/* Header info */}
             <div>
-              <h1 style={{ fontSize: '28px', fontWeight: '900', color: '#30302e', margin: '0 0 4px 0', letterSpacing: '-0.3px' }}>
+              <h1 style={{ fontSize: '28px', fontWeight: '900', color: 'var(--text-color)', margin: '0 0 4px 0', letterSpacing: '-0.3px' }}>
                 {game.title}
               </h1>
-              <p style={{ fontSize: '11px', fontWeight: '700', color: '#87867f', textTransform: 'uppercase', letterSpacing: '1px' }}>
+              <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px' }}>
                 Publisher / Developer: {game.developer}
               </p>
             </div>
 
             {/* Game Features & Categories */}
             <div>
-              <h3 style={{ fontSize: '11px', fontWeight: '800', color: '#87867f', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 10px 0' }}>
+              <h3 style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 10px 0' }}>
                 Game Features & Categories
               </h3>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {categories.map((cat, i) => (
                   <span key={i} style={{
-                    background: '#ede9e3',
-                    color: '#30302e',
-                    border: '1.5px solid #30302e',
+                    background: 'var(--card-bg-alt)',
+                    color: 'var(--text-color)',
+                    border: '1.5px solid var(--card-border)',
                     fontSize: '10px',
                     fontWeight: '700',
                     padding: '4px 10px',
                     borderRadius: '8px',
+                    transition: 'background-color 0.15s, color 0.15s, border-color 0.15s',
                   }}>
                     {cat}
                   </span>
@@ -471,20 +606,21 @@ const ImagePreviewModal = ({ game, onClose }) => {
 
             {/* Popular Genre Tags */}
             <div>
-              <h3 style={{ fontSize: '11px', fontWeight: '800', color: '#87867f', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 10px 0' }}>
+              <h3 style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 10px 0' }}>
                 Popular Genre Tags
               </h3>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {game.tags.map((tag, i) => (
                   <span key={i} style={{
-                    background: '#faf9f6',
-                    color: '#30302e',
-                    border: '1.5px solid #30302e',
+                    background: 'var(--card-bg)',
+                    color: 'var(--text-color)',
+                    border: '1.5px solid var(--card-border)',
                     fontSize: '10px',
                     fontWeight: '700',
                     padding: '4px 10px',
                     borderRadius: '99px',
-                    boxShadow: '0 2px 0 #30302e',
+                    boxShadow: '0 2px 0 var(--card-shadow)',
+                    transition: 'background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s',
                   }}>
                     {tag}
                   </span>
@@ -494,7 +630,7 @@ const ImagePreviewModal = ({ game, onClose }) => {
 
             {/* PC System Requirements */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <h3 style={{ fontSize: '11px', fontWeight: '800', color: '#87867f', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>
+              <h3 style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>
                 PC System Requirements
               </h3>
               
@@ -515,14 +651,15 @@ const ImagePreviewModal = ({ game, onClose }) => {
         {/* Footer toolbar */}
         <div style={{
           padding: '12px 24px',
-          background: '#f4f2ed',
-          borderTop: '2px solid #30302e',
+          background: 'var(--bg-grid)',
+          borderTop: '2px solid var(--card-border)',
           fontSize: '10px',
           fontWeight: '700',
-          color: '#87867f',
+          color: 'var(--text-muted)',
           display: 'flex',
           justifyContent: 'space-between',
           letterSpacing: '0.5px',
+          transition: 'background-color 0.15s, border-color 0.15s, color 0.15s',
         }}>
           <span>PRESS [ESC] TO DISMISS VIEW</span>
           <span>SECURE PROTOCOL DATA INCOMING</span>

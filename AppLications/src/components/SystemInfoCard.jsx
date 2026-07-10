@@ -143,16 +143,17 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
       ref={cardRef}
       className={className}
       style={{
-        background: '#faf9f6',
-        border: '2.5px solid #30302e',
+        background: 'var(--card-bg)',
+        border: '2.5px solid var(--card-border)',
         borderRadius: '24px',
-        boxShadow: '0 8px 0 #30302e, 0 16px 40px rgba(48,48,46,0.12)',
+        boxShadow: '0 8px 0 var(--card-shadow), 0 16px 40px rgba(0,0,0,var(--shadow-opacity))',
         padding: '20px 24px',
         userSelect: 'none',
         fontFamily: "'Outfit', 'Segoe UI', sans-serif",
         display: 'flex',
         flexDirection: 'column',
         gap: '16px',
+        transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
         ...style,
       }}
     >
@@ -166,22 +167,24 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
               width: '10px',
               height: '10px',
               borderRadius: '50%',
-              background: '#4d9e6a',
-              boxShadow: '0 0 8px #4d9e6a',
+              background: 'var(--led-color)',
+              boxShadow: '0 0 8px var(--led-color)',
+              transition: 'background-color 0.15s, box-shadow 0.15s',
             }}
           />
-          <h2 style={{ fontSize: '15px', fontWeight: '900', color: '#30302e', textTransform: 'uppercase', letterSpacing: '0.8px', margin: 0 }}>
+          <h2 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--text-color)', textTransform: 'uppercase', letterSpacing: '0.8px', margin: 0 }}>
             System Diagnostics Terminal
           </h2>
         </div>
         <span style={{
           fontSize: '10px',
           fontWeight: '800',
-          color: '#faf9f6',
-          background: '#30302e',
+          color: 'var(--card-bg)',
+          background: 'var(--card-border)',
           padding: '3px 8px',
           borderRadius: '6px',
-          letterSpacing: '0.5px'
+          letterSpacing: '0.5px',
+          transition: 'background-color 0.15s, color 0.15s',
         }}>
           {status}
         </span>
@@ -192,56 +195,57 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
         display: 'grid',
         gridTemplateColumns: 'repeat(2, 1fr)',
         gap: '12px',
-        background: '#ede9e3',
+        background: 'var(--card-bg-alt)',
         padding: '16px',
         borderRadius: '16px',
-        border: '1.5px solid #30302e',
+        border: '1.5px solid var(--card-border)',
+        transition: 'background-color 0.15s, border-color 0.15s',
       }}>
         {/* Machine ID */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <span style={{ fontSize: '9px', fontWeight: '700', color: '#87867f', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Machine Code</span>
-          <span style={{ fontSize: '13px', fontWeight: '800', color: '#30302e', fontFamily: 'monospace' }}>{machineCode}</span>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Machine Code</span>
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)', fontFamily: 'monospace' }}>{machineCode}</span>
         </div>
 
         {/* Operating System */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <span style={{ fontSize: '9px', fontWeight: '700', color: '#87867f', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Operating System</span>
-          <span style={{ fontSize: '13px', fontWeight: '800', color: '#30302e' }}>{sysInfo.os}</span>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Operating System</span>
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.os}</span>
         </div>
 
         {/* Processor Name */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: 'span 2' }}>
-          <span style={{ fontSize: '9px', fontWeight: '700', color: '#87867f', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Processor</span>
-          <span style={{ fontSize: '13px', fontWeight: '800', color: '#30302e', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sysInfo.cpu}</span>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Processor</span>
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sysInfo.cpu}</span>
         </div>
 
         {/* CPU Cores count */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <span style={{ fontSize: '9px', fontWeight: '700', color: '#87867f', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Logical Cores</span>
-          <span style={{ fontSize: '13px', fontWeight: '800', color: '#30302e' }}>{sysInfo.cores}</span>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Logical Cores</span>
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.cores}</span>
         </div>
 
         {/* RAM Size */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-          <span style={{ fontSize: '9px', fontWeight: '700', color: '#87867f', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Memory</span>
-          <span style={{ fontSize: '13px', fontWeight: '800', color: '#30302e' }}>{sysInfo.ram}</span>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Memory</span>
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.ram}</span>
         </div>
 
         {/* Display Resolution */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: 'span 2' }}>
-          <span style={{ fontSize: '9px', fontWeight: '700', color: '#87867f', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Resolution</span>
-          <span style={{ fontSize: '13px', fontWeight: '800', color: '#30302e' }}>{sysInfo.resolution}</span>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Resolution</span>
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.resolution}</span>
         </div>
 
         {/* Graphics Engine */}
-        <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: 'span 2', borderTop: '1px solid #dcd7cd', paddingTop: '8px', marginTop: '4px' }}>
-          <span style={{ fontSize: '9px', fontWeight: '700', color: '#87867f', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Graphics Processing Unit</span>
-          <span style={{ fontSize: '12px', fontWeight: '800', color: '#30302e', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={sysInfo.gpu}>{sysInfo.gpu}</span>
+        <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: 'span 2', borderTop: '1px solid var(--card-border)', opacity: 0.9, paddingTop: '8px', marginTop: '4px' }}>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Graphics Processing Unit</span>
+          <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={sysInfo.gpu}>{sysInfo.gpu}</span>
         </div>
       </div>
 
       {/* Footer tagline */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9px', color: '#87867f', fontWeight: '600' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9px', color: 'var(--text-muted)', fontWeight: '600' }}>
         <span>HOST NODE PORT: 4000</span>
         <span style={{ fontFamily: 'monospace' }}>SECURE LOCALHOST CONNECTION</span>
       </div>

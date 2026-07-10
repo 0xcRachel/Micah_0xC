@@ -1,24 +1,31 @@
 import React, { useRef } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
-import Background from '../components/Background';
 
-const Toggle = ({ settingKey, defaultOn = false }) => {
+const Toggle = ({ settingKey, defaultOn = false, checked, onChange, id }) => {
   const saved = localStorage.getItem(`setting_${settingKey}`);
   const initial = saved !== null ? saved === 'true' : defaultOn;
-  const [on, setOn] = React.useState(initial);
+  const [localOn, setLocalOn] = React.useState(initial);
 
-  const handleToggle = () => {
-    const next = !on;
-    setOn(next);
-    localStorage.setItem(`setting_${settingKey}`, String(next));
+  const isControlled = checked !== undefined;
+  const on = isControlled ? checked : localOn;
+
+  const handleToggle = (e) => {
+    if (isControlled) {
+      if (onChange) onChange(!on, e);
+    } else {
+      const next = !on;
+      setLocalOn(next);
+      localStorage.setItem(`setting_${settingKey}`, String(next));
+    }
   };
 
   return (
     <button
+      id={id}
       onClick={handleToggle}
       className={`relative w-11 h-6 rounded-full transition-colors duration-300 cursor-pointer flex-shrink-0
-        ${on ? 'bg-[#30302e]' : 'bg-[#c4b99a]'}`}
+        ${on ? 'bg-[#4d9e6a]' : 'bg-[var(--text-muted)]/40'}`}
     >
       <span
         className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform duration-300
@@ -29,16 +36,22 @@ const Toggle = ({ settingKey, defaultOn = false }) => {
 };
 
 const SettingRow = ({ label, description, children }) => (
-  <div className="flex items-center justify-between bg-[#f0eee6] rounded-2xl px-4 py-3">
+  <div className="flex items-center justify-between bg-[var(--card-bg-alt)] rounded-2xl px-4 py-3 border border-[var(--card-border)]/10">
     <div>
-      <p className="text-sm font-semibold text-[#30302e]">{label}</p>
-      {description && <p className="text-xs text-[#87867f] mt-0.5">{description}</p>}
+      <p className="text-sm font-semibold text-[var(--text-color)]">{label}</p>
+      {description && <p className="text-xs text-[var(--text-muted)] mt-0.5">{description}</p>}
     </div>
     {children}
   </div>
 );
 
-const SettingsPage = ({ onBack }) => {
+const SettingsPage = ({
+  onBack,
+  isDarkMode,
+  onToggleDarkMode,
+  animationsEnabled,
+  onToggleAnimations
+}) => {
   const pageRef = useRef(null);
   const contentRef = useRef(null);
 
@@ -68,7 +81,7 @@ const SettingsPage = ({ onBack }) => {
       className="fixed inset-0 z-40 flex items-center justify-center"
     >
       {/* Blurred background */}
-      <div className="absolute inset-0 bg-[#f9f8f4]/80 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-[var(--bg-color)]/85 backdrop-blur-md" />
 
       {/* Page Content */}
       <div
@@ -78,8 +91,8 @@ const SettingsPage = ({ onBack }) => {
         {/* Back Button */}
         <button
           onClick={handleBack}
-          className="mb-6 flex items-center gap-2 text-sm font-semibold text-[#87867f] 
-            hover:text-[#30302e] transition-colors duration-200 cursor-pointer group"
+          className="mb-6 flex items-center gap-2 text-sm font-semibold text-[var(--text-muted)] 
+            hover:text-[var(--text-color)] transition-colors duration-200 cursor-pointer group"
         >
           <span className="inline-block transition-transform duration-200 group-hover:-translate-x-1">←</span>
           Back
@@ -87,28 +100,38 @@ const SettingsPage = ({ onBack }) => {
 
         {/* Card */}
         <div
-          className="bg-[#f9f8f4] border border-[#e6dfd3] rounded-3xl p-8 shadow-2xl overflow-y-auto max-h-[75vh] no-scrollbar"
-          style={{ boxShadow: '0 24px 64px rgba(48,48,46,0.12)' }}
+          className="bg-[var(--card-bg)] border-2 border-[var(--card-border)] rounded-3xl p-8 shadow-2xl overflow-y-auto max-h-[75vh] no-scrollbar"
+          style={{ boxShadow: '0 24px 64px rgba(0,0,0,var(--shadow-opacity))' }}
         >
-          <h1 className="text-2xl font-black text-[#30302e] tracking-wider uppercase mb-8">Settings</h1>
+          <h1 className="text-2xl font-black text-[var(--text-color)] tracking-wider uppercase mb-8">Settings</h1>
 
           <div className="space-y-6">
             {/* Appearance */}
             <section>
-              <p className="text-xs font-bold uppercase tracking-widest text-[#87867f] mb-3">Appearance</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-3">Appearance</p>
               <div className="space-y-3">
                 <SettingRow label="Dark Mode" description="Use dark background theme">
-                  <Toggle settingKey="darkMode" />
+                  <Toggle
+                    id="dark-mode-toggle"
+                    settingKey="darkMode"
+                    checked={isDarkMode}
+                    onChange={onToggleDarkMode}
+                  />
                 </SettingRow>
                 <SettingRow label="Animations" description="Enable UI animations">
-                  <Toggle settingKey="animations" defaultOn />
+                  <Toggle
+                    id="animations-toggle"
+                    settingKey="animations"
+                    checked={animationsEnabled}
+                    onChange={onToggleAnimations}
+                  />
                 </SettingRow>
               </div>
             </section>
 
             {/* Character */}
             <section>
-              <p className="text-xs font-bold uppercase tracking-widest text-[#87867f] mb-3">Character</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-3">Character</p>
               <div className="space-y-3">
                 <SettingRow label="Show Character" description="Display character on home screen">
                   <Toggle settingKey="showCharacter" defaultOn />
@@ -121,7 +144,7 @@ const SettingsPage = ({ onBack }) => {
 
             {/* App */}
             <section>
-              <p className="text-xs font-bold uppercase tracking-widest text-[#87867f] mb-3">App</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mb-3">App</p>
               <div className="space-y-3">
                 <SettingRow label="Start on Boot" description="Launch app when system starts">
                   <Toggle settingKey="startBoot" />
@@ -133,7 +156,7 @@ const SettingsPage = ({ onBack }) => {
             </section>
           </div>
 
-          <p className="text-center text-xs text-[#c4b99a] mt-8 font-mono">v1.0.0</p>
+          <p className="text-center text-xs text-[var(--text-muted)] mt-8 font-mono">v1.0.0</p>
         </div>
       </div>
     </div>
