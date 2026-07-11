@@ -477,12 +477,25 @@ struct VersionCheckInfo {
 async fn check_version_requirement() -> CommandResult<VersionCheckInfo> {
     let current_version = env!("CARGO_PKG_VERSION").to_string();
 
-    // Fetch version config from GitHub
-    let url = "https://raw.githubusercontent.com/0xcRachel/Micah_0xC/main/version-config.json";
-    let client = reqwest::Client::new();
+    // Fetch version config from GitHub.
+    // Append a cache-busting timestamp so GitHub Raw (5-min CDN cache) always
+    // returns the latest version-config.json instead of a stale copy.
+    let url = format!(
+        "https://raw.githubusercontent.com/0xcRachel/Micah_0xC/main/version-config.json?t={}",
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs()
+    );
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|err| format!("Failed to build HTTP client: {}", err))?;
     let response = client
-        .get(url)
+        .get(&url)
         .header("User-Agent", "Micah0xC-App")
+        .header("Cache-Control", "no-cache, no-store, must-revalidate")
+        .header("Pragma", "no-cache")
         .send()
         .await
         .map_err(|err| format!("Failed to fetch version config: {}", err))?;

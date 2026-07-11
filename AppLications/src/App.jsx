@@ -31,16 +31,22 @@ const App = () => {
   const [versionInfo, setVersionInfo] = useState(null);
   const [versionChecked, setVersionChecked] = useState(false);
 
-  // Check version requirement on startup
+  // Check version requirement on startup.
+  // Race against a 6s timeout so the app never hangs on a black screen
+  // if GitHub is unreachable.
   useEffect(() => {
-    checkVersionRequirement()
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('version check timeout')), 6000),
+    );
+
+    Promise.race([checkVersionRequirement(), timeout])
       .then((info) => {
         console.log('[VersionCheck] result:', info);
         setVersionInfo(info);
         setVersionChecked(true);
       })
       .catch((err) => {
-        // If version check fails (offline, Rust not rebuilt, etc.), allow the app to run
+        // If version check fails (offline, timeout, etc.), allow the app to run.
         console.error('[VersionCheck] failed:', err);
         setVersionChecked(true);
       });
@@ -183,8 +189,33 @@ const App = () => {
   const isForceUpdate = versionInfo?.status === 'force';
   const isOptionalUpdate = versionInfo?.status === 'optional';
 
-  // While version is being checked, show nothing (loading state)
-  if (!versionChecked) return null;
+  // While version is being checked, show a loading screen (never a black screen)
+  if (!versionChecked) {
+    return (
+      <div style={{
+        position: 'fixed',
+        inset: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 16,
+        background: 'var(--bg-color, #f8f6f0)',
+      }}>
+        <span style={{
+          width: 36,
+          height: 36,
+          border: '3px solid var(--text-muted, #87867f)',
+          borderTopColor: 'var(--text-color, #30302e)',
+          borderRadius: '50%',
+          animation: 'fu-spin 0.7s linear infinite',
+        }} />
+        <p style={{ fontSize: 13, color: 'var(--text-muted, #87867f)', margin: 0 }}>
+          Checking for updates…
+        </p>
+      </div>
+    );
+  }
 
   // Force update — block the entire app
   if (isForceUpdate) {
