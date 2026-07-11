@@ -254,3 +254,9 @@ export const closeWindow = (): Promise<void> =>
 /** Check if the current app version meets the minimum/minimum requirement from the server */
 export const checkVersionRequirement = (): Promise<VersionCheckInfo> =>
   invoke<VersionCheckInfo>('check_version_requirement');
+
+// ==================== BROWSER ====================
+
+/** Open a URL in the user's default browser */
+export const openInBrowser = (url: string): Promise<void> =>
+  invoke<void>('open_in_browser', { url });
