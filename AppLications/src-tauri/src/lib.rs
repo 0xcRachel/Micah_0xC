@@ -459,18 +459,25 @@ fn open_in_browser(url: String) -> CommandResult<()> {
 
 // ==================== VERSION CHECK ====================
 
+/// Update status returned to the frontend.
+/// - "force":    current < minimum  → user MUST update (app locked)
+/// - "optional": minimum ≤ current < latest → update available but app still usable
+/// - "none":     current ≥ latest  → already on the latest version
 #[derive(Debug, Clone, Serialize)]
 struct VersionCheckInfo {
     current_version: String,
-    minimum_required: String,
-    is_outdated: bool,
+    minimum_version: String,
+    latest_version: String,
+    download_url: String,
+    release_notes: String,
+    status: String, // "force" | "optional" | "none"
 }
 
 #[tauri::command]
 async fn check_version_requirement() -> CommandResult<VersionCheckInfo> {
     let current_version = env!("CARGO_PKG_VERSION").to_string();
 
-    // Fetch minimum version from GitHub
+    // Fetch version config from GitHub
     let url = "https://raw.githubusercontent.com/0xcRachel/Micah_0xC/main/version-config.json";
     let client = reqwest::Client::new();
     let response = client
@@ -492,18 +499,49 @@ async fn check_version_requirement() -> CommandResult<VersionCheckInfo> {
         .await
         .map_err(|err| format!("Failed to parse version config: {}", err))?;
 
-    let minimum_required = config
+    let minimum_version = config
         .get("minimum_version")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Version config missing minimum_version field".to_string())?
         .to_string();
 
-    let is_outdated = compare_versions(&current_version, &minimum_required) < 0;
+    let latest_version = config
+        .get("latest_version")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&minimum_version)
+        .to_string();
+
+    let download_url = config
+        .get("download_url")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let release_notes = config
+        .get("release_notes")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    // Determine update status
+    let cmp_min = compare_versions(&current_version, &minimum_version);
+    let cmp_lat = compare_versions(&current_version, &latest_version);
+
+    let status = if cmp_min < 0 {
+        "force"
+    } else if cmp_lat < 0 {
+        "optional"
+    } else {
+        "none"
+    };
 
     Ok(VersionCheckInfo {
         current_version,
-        minimum_required,
-        is_outdated,
+        minimum_version,
+        latest_version,
+        download_url,
+        release_notes,
+        status: status.to_string(),
     })
 }
 

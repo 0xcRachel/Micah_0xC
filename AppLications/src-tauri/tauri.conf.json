@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "title": "Micah 0xC",
         "width": 1380,
         "height": 760,
         "center": true,

@@ -1,11 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { closeWindow } from './api';
+import { closeWindow, checkVersionRequirement } from './api';
 import IntroOverlay from './components/IntroOverlay';
 import Background from './components/Background';
 import Character from './components/Character';
+import ForceUpdate from './components/ForceUpdate';
 import SettingsPage from './pages/SettingsPage';
 import LikePage from './pages/LikePage';
 import ProfileCard from './components/ProfileCard';
@@ -25,6 +26,23 @@ const App = () => {
   const containerRef = useRef(null);
   const contentRef = useRef(null);
   const transitionCircleRef = useRef(null);
+
+  // Version check state
+  const [versionInfo, setVersionInfo] = useState(null);
+  const [versionChecked, setVersionChecked] = useState(false);
+
+  // Check version requirement on startup
+  useEffect(() => {
+    checkVersionRequirement()
+      .then((info) => {
+        setVersionInfo(info);
+        setVersionChecked(true);
+      })
+      .catch(() => {
+        // If version check fails (offline, etc.), allow the app to run
+        setVersionChecked(true);
+      });
+  }, []);
 
   const [currentPage, setCurrentPage] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -159,6 +177,18 @@ const App = () => {
     localStorage.setItem('setting_animations', String(nextVal));
   };
 
+  // Determine if the app should be locked (force update) or allowed to run
+  const isForceUpdate = versionInfo?.status === 'force';
+  const isOptionalUpdate = versionInfo?.status === 'optional';
+
+  // While version is being checked, show nothing (loading state)
+  if (!versionChecked) return null;
+
+  // Force update — block the entire app
+  if (isForceUpdate) {
+    return <ForceUpdate versionInfo={versionInfo} isOptional={false} />;
+  }
+
   const characterImage = isDarkMode ? charDark : charLight;
 
   return (
@@ -246,6 +276,11 @@ const App = () => {
           game={selectedGame}
           onClose={() => setShowPreview(false)}
         />
+      )}
+
+      {/* Optional update banner — non-blocking overlay */}
+      {isOptionalUpdate && (
+        <ForceUpdate versionInfo={versionInfo} isOptional={true} />
       )}
     </div>
   );

@@ -6,6 +6,10 @@
     "main"
   ],
   "permissions": [
-    "core:default"
-  ]
+    "core:default",
+    "shell:allow-open"
+  ],
+  "remote": {
+    "urls": ["https://raw.githubusercontent.com/**"]
+  }
 }

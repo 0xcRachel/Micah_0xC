@@ -124,6 +124,15 @@ export interface DnsLatencyReport {
   results: DnsLatencyResult[];
 }
 
+export interface VersionCheckInfo {
+  current_version: string;
+  minimum_version: string;
+  latest_version: string;
+  download_url: string;
+  release_notes: string;
+  status: 'force' | 'optional' | 'none';
+}
+
 // ==================== STEAM DIRECTORY ====================
 
 /** Auto-detect Steam installation directory from registry/common paths */
@@ -239,3 +248,9 @@ export const minimizeWindow = (): Promise<void> =>
 /** Close the current Tauri window */
 export const closeWindow = (): Promise<void> =>
   invoke<void>('close_window');
+
+// ==================== VERSION CHECK ====================
+
+/** Check if the current app version meets the minimum/minimum requirement from the server */
+export const checkVersionRequirement = (): Promise<VersionCheckInfo> =>
+  invoke<VersionCheckInfo>('check_version_requirement');
