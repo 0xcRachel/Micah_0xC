@@ -30,6 +30,7 @@ const App = () => {
   // Version check state
   const [versionInfo, setVersionInfo] = useState(null);
   const [versionChecked, setVersionChecked] = useState(false);
+  const [optionalDismissed, setOptionalDismissed] = useState(false);
 
   // Check version requirement on startup.
   // Race against a 6s timeout so the app never hangs on a black screen
@@ -187,7 +188,7 @@ const App = () => {
 
   // Determine if the app should be locked (force update) or allowed to run
   const isForceUpdate = versionInfo?.status === 'force';
-  const isOptionalUpdate = versionInfo?.status === 'optional';
+  const isOptionalUpdate = versionInfo?.status === 'optional' && !optionalDismissed;
 
   // While version is being checked, show a loading screen (never a black screen)
   if (!versionChecked) {
@@ -313,7 +314,11 @@ const App = () => {
 
       {/* Optional update banner — non-blocking overlay */}
       {isOptionalUpdate && (
-        <ForceUpdate versionInfo={versionInfo} isOptional={true} />
+        <ForceUpdate
+          versionInfo={versionInfo}
+          isOptional={true}
+          onSkip={() => setOptionalDismissed(true)}
+        />
       )}
     </div>
   );

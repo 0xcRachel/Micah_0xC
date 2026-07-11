@@ -13,8 +13,9 @@ gsap.registerPlugin(useGSAP);
  * Props:
  *   versionInfo  – object returned by checkVersionRequirement()
  *   isOptional   – if true, shows a "Skip" button (optional update)
+ *   onSkip       – callback when user dismisses an optional update
  */
-const ForceUpdate = ({ versionInfo, isOptional }) => {
+const ForceUpdate = ({ versionInfo, isOptional, onSkip }) => {
   const containerRef = useRef(null);
   const cardRef = useRef(null);
   const badgeRef = useRef(null);
@@ -112,9 +113,7 @@ const ForceUpdate = ({ versionInfo, isOptional }) => {
   };
 
   const handleClose = () => {
-    const tl = gsap.timeline({
-      onComplete: () => window.close(),
-    });
+    const tl = gsap.timeline();
 
     tl.to(cardRef.current, {
       opacity: 0,
@@ -129,6 +128,15 @@ const ForceUpdate = ({ versionInfo, isOptional }) => {
       { opacity: 0, duration: 0.2 },
       '-=0.15',
     );
+
+    // After exit animation: skip (optional) or close window (forced fallback)
+    tl.add(() => {
+      if (isOptional && onSkip) {
+        onSkip();
+      } else {
+        window.close();
+      }
+    });
   };
 
   return (
