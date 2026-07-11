@@ -1,12 +1,14 @@
 {
   "name": "AppLications",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "rsbuild build",
     "dev": "rsbuild --open",
-    "preview": "rsbuild preview"
+    "preview": "rsbuild preview",
+    "version": "node scripts/bump-version.js",
+    "release": "node scripts/bump-version.js minor --build"
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",

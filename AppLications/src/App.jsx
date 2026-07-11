@@ -35,11 +35,13 @@ const App = () => {
   useEffect(() => {
     checkVersionRequirement()
       .then((info) => {
+        console.log('[VersionCheck] result:', info);
         setVersionInfo(info);
         setVersionChecked(true);
       })
-      .catch(() => {
-        // If version check fails (offline, etc.), allow the app to run
+      .catch((err) => {
+        // If version check fails (offline, Rust not rebuilt, etc.), allow the app to run
+        console.error('[VersionCheck] failed:', err);
         setVersionChecked(true);
       });
   }, []);
