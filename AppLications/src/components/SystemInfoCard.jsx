@@ -1,0 +1,255 @@
+import React, { useRef, useState, useEffect } from 'react';
+import gsap from 'gsap';
+import { useGSAP } from '@gsap/react';
+import { invoke } from '@tauri-apps/api/core';
+
+gsap.registerPlugin(useGSAP);
+
+const getMachineCode = () => {
+  let code = localStorage.getItem('sys_machine_code');
+  if (!code) {
+    const chars = '0123456789ABCDEF';
+    let part1 = '';
+    let part2 = '';
+    for (let i = 0; i < 4; i++) part1 += chars[Math.floor(Math.random() * 16)];
+    for (let i = 0; i < 4; i++) part2 += chars[Math.floor(Math.random() * 16)];
+    code = `DESKTOP-MC${part1}-${part2}`;
+    localStorage.setItem('sys_machine_code', code);
+  }
+  return code;
+};
+
+// Helper to detect browser fallback system info in case Tauri is not running
+const detectBrowserFallbackInfo = () => {
+  const info = {
+    os: 'Windows (Web Fallback)',
+    cpu: 'AMD / Intel Processor (Web)',
+    cores: `${navigator.hardwareConcurrency || 8} Cores`,
+    ram: `${navigator.deviceMemory || 16} GB Est.`,
+    resolution: `${window.screen.width} x ${window.screen.height}`,
+    gpu: 'Graphics Adapter (Web)',
+  };
+
+  const ua = navigator.userAgent;
+  if (ua.indexOf('Macintosh') !== -1) {
+    info.os = 'macOS (Web Fallback)';
+    info.cpu = 'Apple Silicon (Web)';
+  } else if (ua.indexOf('Linux') !== -1) {
+    info.os = 'Linux Kernel (Web)';
+  }
+
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (gl) {
+      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
+      if (debugInfo) {
+        const renderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_STRING_WEBGL);
+        if (renderer) {
+          if (renderer.includes('NVIDIA')) {
+            info.gpu = renderer.match(/NVIDIA[^\)]+/)?.[0] || 'NVIDIA GPU';
+          } else if (renderer.includes('AMD') || renderer.includes('Radeon')) {
+            info.gpu = renderer.match(/(AMD|Radeon)[^\)]+/)?.[0] || 'AMD GPU';
+            info.cpu = 'AMD Processor (Web)';
+          } else if (renderer.includes('Intel')) {
+            info.gpu = renderer.match(/Intel[^\)]+/)?.[0] || 'Intel GPU';
+          } else if (renderer.includes('Apple')) {
+            info.gpu = 'Apple Silicon GPU';
+          } else {
+            info.gpu = renderer.split('/')[0].replace('ANGLE (', '');
+          }
+        }
+      }
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  return info;
+};
+
+const SystemInfoCard = ({ className = '', style = {} }) => {
+  const [sysInfo, setSysInfo] = useState({
+    os: 'Detecting...',
+    cpu: 'Detecting...',
+    cores: 'Detecting...',
+    ram: 'Detecting...',
+    resolution: `${window.screen.width} x ${window.screen.height}`,
+    gpu: 'Detecting...',
+  });
+  const [machineCode, setMachineCode] = useState('');
+  const [status, setStatus] = useState('ONLINE');
+  const cardRef = useRef(null);
+
+  useEffect(() => {
+    setMachineCode(getMachineCode());
+
+    // Call Rust Tauri command to get real hardware info
+    const fetchRealSystemInfo = async () => {
+      try {
+        const realInfo = await invoke('get_system_info');
+        setSysInfo({
+          os: realInfo.os || 'Windows 11',
+          cpu: realInfo.cpu || 'Intel Core i7',
+          cores: realInfo.cores || '8 Cores',
+          ram: realInfo.ram || '16 GB',
+          resolution: `${window.screen.width} x ${window.screen.height}`,
+          gpu: realInfo.gpu || 'NVIDIA Graphics',
+        });
+      } catch (err) {
+        console.warn('Could not call Tauri backend, using browser fallback:', err);
+        setSysInfo(detectBrowserFallbackInfo());
+      }
+    };
+
+    fetchRealSystemInfo();
+
+    const interval = setInterval(() => {
+      setStatus(prev => prev === 'ONLINE' ? 'SYS_OK' : 'ONLINE');
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // GSAP Entrance animations
+  useGSAP(() => {
+    const tl = gsap.timeline({ defaults: { ease: 'power3.out' } });
+
+    tl.fromTo(cardRef.current,
+      { y: 30, opacity: 0, scale: 0.98 },
+      { y: 0, opacity: 1, scale: 1, duration: 0.6 }
+    );
+
+    const rows = cardRef.current?.querySelectorAll('.info-row');
+    if (rows && rows.length > 0) {
+      tl.fromTo(rows,
+        { x: -15, opacity: 0 },
+        { x: 0, opacity: 1, duration: 0.4, stagger: 0.05 },
+        '-=0.3'
+      );
+    }
+
+    gsap.to('.status-led', {
+      opacity: 0.3,
+      duration: 0.6,
+      repeat: -1,
+      yoyo: true,
+      ease: 'sine.inOut'
+    });
+  }, { scope: cardRef });
+
+  return (
+    <div
+      ref={cardRef}
+      className={className}
+      style={{
+        background: 'var(--card-bg)',
+        border: '2.5px solid var(--card-border)',
+        borderRadius: '24px',
+        boxShadow: '0 8px 0 var(--card-shadow), 0 16px 40px rgba(0,0,0,var(--shadow-opacity))',
+        padding: '20px 24px',
+        userSelect: 'none',
+        fontFamily: "'Outfit', 'Segoe UI', sans-serif",
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '16px',
+        transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
+        ...style,
+      }}
+    >
+      {/* Header section */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* Pulsing Status LED */}
+          <div
+            className="status-led animate-pulse"
+            style={{
+              width: '10px',
+              height: '10px',
+              borderRadius: '50%',
+              background: 'var(--led-color)',
+              boxShadow: '0 0 8px var(--led-color)',
+              transition: 'background-color 0.15s, box-shadow 0.15s',
+            }}
+          />
+          <h2 style={{ fontSize: '15px', fontWeight: '900', color: 'var(--text-color)', textTransform: 'uppercase', letterSpacing: '0.8px', margin: 0 }}>
+            System Diagnostics Terminal
+          </h2>
+        </div>
+        <span style={{
+          fontSize: '10px',
+          fontWeight: '800',
+          color: 'var(--card-bg)',
+          background: 'var(--card-border)',
+          padding: '3px 8px',
+          borderRadius: '6px',
+          letterSpacing: '0.5px',
+          transition: 'background-color 0.15s, color 0.15s',
+        }}>
+          {status}
+        </span>
+      </div>
+
+      {/* Grid container for system elements */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(2, 1fr)',
+        gap: '12px',
+        background: 'var(--card-bg-alt)',
+        padding: '16px',
+        borderRadius: '16px',
+        border: '1.5px solid var(--card-border)',
+        transition: 'background-color 0.15s, border-color 0.15s',
+      }}>
+        {/* Machine ID */}
+        <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Machine Code</span>
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)', fontFamily: 'monospace' }}>{machineCode}</span>
+        </div>
+
+        {/* Operating System */}
+        <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Operating System</span>
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.os}</span>
+        </div>
+
+        {/* Processor Name */}
+        <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: 'span 2' }}>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Processor</span>
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sysInfo.cpu}</span>
+        </div>
+
+        {/* CPU Cores count */}
+        <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Logical Cores</span>
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.cores}</span>
+        </div>
+
+        {/* RAM Size */}
+        <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Memory</span>
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.ram}</span>
+        </div>
+
+        {/* Display Resolution */}
+        <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: 'span 2' }}>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Resolution</span>
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.resolution}</span>
+        </div>
+
+        {/* Graphics Engine */}
+        <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: 'span 2', borderTop: '1px solid var(--card-border)', opacity: 0.9, paddingTop: '8px', marginTop: '4px' }}>
+          <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Graphics Processing Unit</span>
+          <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={sysInfo.gpu}>{sysInfo.gpu}</span>
+        </div>
+      </div>
+
+      {/* Footer tagline */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '9px', color: 'var(--text-muted)', fontWeight: '600' }}>
+        <span>HOST NODE PORT: 4000</span>
+        <span style={{ fontFamily: 'monospace' }}>SECURE LOCALHOST CONNECTION</span>
+      </div>
+    </div>
+  );
+};
+
+export default SystemInfoCard;

@@ -1,0 +1,41 @@
+Document.md
+node_modules
+Micah_Dll/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+AppLications/.env
+
+# Supabase local CLI data & migrations
+supbaseData/
+supabase/
+
+skill/
+skills/
+skills-lock.json
+.skill-lock.json
+plugins/
+.agents
+agents
+agent/
+agent/skills
+.agents/skills
+agents/skills
+
+# Build artifacts
+target/
+dist/
+*.o
+*.so
+*.dylib
+.skill-lock.json
+
+AppLications/src-tauri/src/lib.rs
+AppLications/src-tauri/src/main.rs
+AppLications/src-tauri/src/manager.rs
+
+
+AppLications/src-tauri/Cargo.lock
+AppLications/package-lock.json

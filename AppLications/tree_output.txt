@@ -1,0 +1,5 @@
+FINDSTR: Cannot open target
+FINDSTR: Cannot open .git
+FINDSTR: Cannot open .next
+FINDSTR: Cannot open .vscode
+FINDSTR: Cannot open .turbo\  
