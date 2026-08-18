@@ -131,7 +131,7 @@ const TabStatus = ({ steamDir, scanData, onRefresh, loading }) => {
                 </span>
               </td>
               <td><Led on={dll.hash_matched} /></td>
-              <td style={{ color: dll.load_state === 'Loaded' ? 'var(--led-color)' : 'var(--text-muted)', fontSize: 12 }}>
+              <td style={{ color: dll.load_state === 'Loaded' ? 'var(--led-btn)' : 'var(--text-muted)', fontSize: 12 }}>
                 {loadStateLabel(dll.load_state)}
               </td>
             </tr>
@@ -327,7 +327,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
   return (
     <>
       {isDiscord && missingCloudGames.length > 0 && (
-        <div className="sm-update-card" style={{ borderColor: 'var(--led-color)' }}>
+        <div className="sm-update-card" style={{ borderColor: 'var(--led-btn)' }}>
           <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: 'var(--text-color)' }}>
             Cloud snapshot — {missingCloudGames.length} game(s) missing on this PC:
           </p>

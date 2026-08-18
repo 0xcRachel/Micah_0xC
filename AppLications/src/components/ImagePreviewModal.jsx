@@ -321,10 +321,10 @@ const ImagePreviewModal = ({ game, onClose }) => {
           borderRadius: '24px',
           boxShadow: '0 8px 0 var(--card-shadow), 0 24px 48px rgba(0,0,0,var(--shadow-opacity))',
           overflow: 'hidden',
-          width: '860px',
-          maxWidth: '90vw',
-          height: '560px',
-          maxHeight: '80vh',
+          width: '900px',
+          maxWidth: '92vw',
+          height: '620px',
+          maxHeight: '86vh',
           display: 'flex',
           flexDirection: 'column',
           cursor: 'default',
@@ -374,56 +374,74 @@ const ImagePreviewModal = ({ game, onClose }) => {
           </button>
         </div>
 
-        {/* Content Area - Split Panel */}
-        <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-          
-          {/* Left panel - Static Visual Column */}
+        {/* Hero Banner */}
+        <div style={{
+          position: 'relative',
+          flexShrink: 0,
+          height: '280px',
+          overflow: 'hidden',
+          borderBottom: '2px solid var(--card-border)',
+        }}>
+          {game.imageSrc ? (
+            <img
+              src={game.imageSrc}
+              alt={game.title}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
+          ) : (
+            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--card-bg-alt)' }}>
+              <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '2px' }}>
+                No Cover Available
+              </span>
+            </div>
+          )}
+
+          {/* Gradient overlay */}
           <div style={{
-            width: '270px',
-            background: 'var(--card-bg-alt)',
-            borderRight: '2px solid var(--card-border)',
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(to top, rgba(10,10,10,0.85) 0%, rgba(10,10,10,0.35) 55%, rgba(10,10,10,0.15) 100%)',
+            pointerEvents: 'none',
+          }} />
+
+          {/* Overlay info */}
+          <div style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 0,
             display: 'flex',
-            flexDirection: 'column',
-            padding: '24px 20px',
-            gap: '18px',
-            transition: 'background-color 0.15s, border-color 0.15s',
+            alignItems: 'flex-end',
+            justifyContent: 'space-between',
+            gap: '16px',
+            padding: '20px 28px',
           }}>
-            {/* Image Cover */}
-            <div style={{
-              borderRadius: '16px',
-              overflow: 'hidden',
-              border: '2px solid var(--card-border)',
-              height: '145px',
-              background: 'var(--card-bg-alt)',
-              boxShadow: '0 3px 0 var(--card-shadow)',
-              transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
-            }}>
-              {game.imageSrc ? (
-                <img
-                  src={game.imageSrc}
-                  alt={game.title}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              ) : (
-                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
-                  No Cover
-                </div>
-              )}
+            <div style={{ minWidth: 0 }}>
+              <h1 style={{
+                fontSize: '30px',
+                fontWeight: '900',
+                color: '#ffffff',
+                margin: '0 0 4px 0',
+                letterSpacing: '-0.3px',
+                textShadow: '0 2px 12px rgba(0,0,0,0.6)',
+              }}>
+                {game.title}
+              </h1>
+              <p style={{
+                fontSize: '11px',
+                fontWeight: '700',
+                color: 'rgba(255,255,255,0.85)',
+                textTransform: 'uppercase',
+                letterSpacing: '1.5px',
+                margin: 0,
+                textShadow: '0 1px 6px rgba(0,0,0,0.6)',
+              }}>
+                Publisher / Developer: {game.developer}
+              </p>
             </div>
 
-            {/* Score info */}
-            <div style={{
-              background: 'var(--card-bg)',
-              border: '2px solid var(--card-border)',
-              borderRadius: '16px',
-              padding: '16px 12px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              gap: '8px',
-              boxShadow: '0 4px 0 var(--card-shadow)',
-              transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
-            }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexShrink: 0 }}>
+              {/* Score ring */}
               <div style={{
                 width: '64px',
                 height: '64px',
@@ -434,227 +452,222 @@ const ImagePreviewModal = ({ game, onClose }) => {
                 justifyContent: 'center',
                 fontWeight: '900',
                 fontSize: '22px',
-                color: hasScore ? 'var(--text-color)' : '#b0aca4',
-                background: 'var(--bg-grid)',
-                transition: 'background-color 0.15s, border-color 0.15s, color 0.15s',
+                color: hasScore ? '#ffffff' : 'rgba(255,255,255,0.6)',
+                background: 'rgba(15,15,14,0.55)',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
               }}>
                 {hasScore ? sc : '?'}
               </div>
-              <span style={{ fontSize: '10px', fontWeight: '900', color: sColor, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+              <span style={{
+                fontSize: '10px',
+                fontWeight: '900',
+                color: sColor,
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                textShadow: '0 1px 6px rgba(0,0,0,0.6)',
+                maxWidth: '80px',
+              }}>
                 {hasScore ? game.scoreLabel : 'No Reviews'}
               </span>
-            </div>
 
-            {/* Price tag */}
-            <div style={{
-              background: 'var(--card-border)',
-              color: 'var(--card-bg)',
-              borderRadius: '12px',
-              padding: '12px 8px',
-              textAlign: 'center',
-              fontWeight: '900',
-              fontSize: '16px',
-              boxShadow: '0 3px 0 rgba(0,0,0,var(--shadow-opacity))',
-              transition: 'background-color 0.15s, color 0.15s',
-            }}>
-              {game.price}
-            </div>
-
-            {/* Manifest checking section inside modal */}
-            {game.appid && (
+              {/* Price tag */}
               <div style={{
-                background: 'var(--card-bg)',
-                border: '2px solid var(--card-border)',
-                borderRadius: '16px',
-                padding: '14px 12px',
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px',
-                boxShadow: '0 4px 0 var(--card-shadow)',
-                transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
+                background: 'rgba(15,15,14,0.65)',
+                color: 'var(--led-color)',
+                border: '1.5px solid rgba(255,255,255,0.25)',
+                borderRadius: '12px',
+                padding: '10px 18px',
+                textAlign: 'center',
+                fontWeight: '900',
+                fontSize: '16px',
+                boxShadow: '0 4px 16px rgba(0,0,0,0.45)',
+                transition: 'color 0.15s',
               }}>
-                <span style={{ fontSize: '10px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                  Manifest Database
-                </span>
-                
-                {manifestStatus === 'idle' && (
-                  <button
-                    onClick={handleCheckManifest}
-                    style={{
-                      background: 'var(--tag-bg)',
-                      color: 'var(--text-color)',
-                      border: '1.5px solid var(--card-border)',
-                      borderRadius: '8px',
-                      padding: '8px 12px',
-                      fontSize: '11px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      width: '100%',
-                      transition: 'background-color 0.15s'
-                    }}
-                    className="hover:bg-[var(--button-hover-bg)]"
-                  >
-                    Check Manifest & Lua
-                  </button>
-                )}
+                {game.price}
+              </div>
+            </div>
+          </div>
+        </div>
 
-                {manifestStatus === 'checking' && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '6px 0' }}>
-                    <span className="sm-spinner" style={{ width: '12px', height: '12px', border: '2px solid var(--text-color)', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'sm-spin 0.8s linear infinite' }} />
-                    <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>Checking GitHub...</span>
-                  </div>
-                )}
+        {/* Manifest action strip */}
+        {game.appid && (
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '16px',
+            padding: '12px 28px',
+            background: 'var(--bg-grid)',
+            borderBottom: '1px solid var(--card-border)',
+            flexShrink: 0,
+            transition: 'background-color 0.15s, border-color 0.15s',
+          }}>
+            <span style={{ fontSize: '10px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px' }}>
+              Manifest Database
+            </span>
 
-                {manifestStatus === 'found' && (
-                  <button
-                    onClick={handleAutoImport}
-                    disabled={downloading}
-                    style={{
-                      background: 'var(--led-color)',
-                      color: '#fff',
-                      border: '1.5px solid var(--card-border)',
-                      borderRadius: '8px',
-                      padding: '8px 12px',
-                      fontSize: '11px',
-                      fontWeight: '800',
-                      textAlign: 'center',
-                      cursor: downloading ? 'wait' : 'pointer',
-                      opacity: downloading ? 0.7 : 1,
-                      width: '100%'
-                    }}
-                  >
-                    {downloading ? 'Importing...' : 'Download & Auto-Import (.lua)'}
-                  </button>
-                )}
+            {manifestStatus === 'idle' && (
+              <button
+                onClick={handleCheckManifest}
+                className="hover:bg-[var(--button-hover-bg)]"
+                style={{
+                  background: 'var(--tag-bg)',
+                  color: 'var(--text-color)',
+                  border: '1.5px solid var(--card-border)',
+                  borderRadius: '10px',
+                  padding: '8px 16px',
+                  fontSize: '11px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                  transition: 'background-color 0.15s',
+                }}
+              >
+                Check Manifest & Lua
+              </button>
+            )}
 
-                {manifestStatus === 'not_found' && (
-                  <button
-                    onClick={handleCheckManifest}
-                    style={{
-                      background: '#b85040',
-                      color: '#fff',
-                      border: '1.5px solid var(--card-border)',
-                      borderRadius: '8px',
-                      padding: '8px 12px',
-                      fontSize: '11px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      width: '100%'
-                    }}
-                  >
-                    Not Found (Retry)
-                  </button>
-                )}
-
-                {manifestStatus === 'error' && (
-                  <button
-                    onClick={handleCheckManifest}
-                    style={{
-                      background: '#c49a3a',
-                      color: '#fff',
-                      border: '1.5px solid var(--card-border)',
-                      borderRadius: '8px',
-                      padding: '8px 12px',
-                      fontSize: '11px',
-                      fontWeight: '800',
-                      cursor: 'pointer',
-                      width: '100%'
-                    }}
-                  >
-                    Check Error (Retry)
-                  </button>
-                )}
+            {manifestStatus === 'checking' && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0' }}>
+                <span className="sm-spinner" style={{ width: '12px', height: '12px', border: '2px solid var(--text-color)', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block', animation: 'sm-spin 0.8s linear infinite' }} />
+                <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>Checking...</span>
               </div>
             )}
+
+            {manifestStatus === 'found' && (
+              <button
+                onClick={handleAutoImport}
+                disabled={downloading}
+                style={{
+                  background: 'var(--led-btn)',
+                  color: 'var(--on-led)',
+                  border: '1.5px solid var(--led-btn)',
+                  borderRadius: '10px',
+                  padding: '8px 16px',
+                  fontSize: '11px',
+                  fontWeight: '800',
+                  cursor: downloading ? 'wait' : 'pointer',
+                  opacity: downloading ? 0.7 : 1,
+                  transition: 'background-color 0.15s',
+                }}
+              >
+                {downloading ? 'Importing...' : 'Download & Auto-Import (.lua)'}
+              </button>
+            )}
+
+            {manifestStatus === 'not_found' && (
+              <button
+                onClick={handleCheckManifest}
+                style={{
+                  background: '#b85040',
+                  color: '#fff',
+                  border: '1.5px solid #b85040',
+                  borderRadius: '10px',
+                  padding: '8px 16px',
+                  fontSize: '11px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                }}
+              >
+                Not Found (Retry)
+              </button>
+            )}
+
+            {manifestStatus === 'error' && (
+              <button
+                onClick={handleCheckManifest}
+                style={{
+                  background: '#c49a3a',
+                  color: '#fff',
+                  border: '1.5px solid #c49a3a',
+                  borderRadius: '10px',
+                  padding: '8px 16px',
+                  fontSize: '11px',
+                  fontWeight: '800',
+                  cursor: 'pointer',
+                }}
+              >
+                Check Error (Retry)
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Scrollable body */}
+        <div
+          className="thin-scrollbar"
+          style={{
+            flex: 1,
+            minHeight: 0,
+            padding: '24px 28px',
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '28px',
+            background: 'var(--card-bg)',
+            transition: 'background-color 0.15s',
+          }}
+        >
+          {/* Game Features & Categories */}
+          <div>
+            <h3 style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 10px 0' }}>
+              Game Features & Categories
+            </h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {categories.map((cat, i) => (
+                <span key={i} style={{
+                  background: 'var(--card-bg-alt)',
+                  color: 'var(--text-color)',
+                  border: '1.5px solid var(--card-border)',
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  padding: '4px 10px',
+                  borderRadius: '8px',
+                  transition: 'background-color 0.15s, color 0.15s, border-color 0.15s',
+                }}>
+                  {cat}
+                </span>
+              ))}
+            </div>
           </div>
 
-          {/* Right panel - Scrollable details */}
-          <div
-            className="thin-scrollbar"
-            style={{
-              flex: 1,
-              padding: '24px 28px',
-              overflowY: 'auto',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '24px',
-              background: 'var(--card-bg)',
-              transition: 'background-color 0.15s',
-            }}
-          >
-            {/* Header info */}
-            <div>
-              <h1 style={{ fontSize: '28px', fontWeight: '900', color: 'var(--text-color)', margin: '0 0 4px 0', letterSpacing: '-0.3px' }}>
-                {game.title}
-              </h1>
-              <p style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px' }}>
-                Publisher / Developer: {game.developer}
-              </p>
+          {/* Popular Genre Tags */}
+          <div>
+            <h3 style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 10px 0' }}>
+              Popular Genre Tags
+            </h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+              {game.tags.map((tag, i) => (
+                <span key={i} style={{
+                  background: 'var(--card-bg)',
+                  color: 'var(--text-color)',
+                  border: '1.5px solid var(--card-border)',
+                  fontSize: '10px',
+                  fontWeight: '700',
+                  padding: '4px 10px',
+                  borderRadius: '99px',
+                  boxShadow: '0 2px 0 var(--card-shadow)',
+                  transition: 'background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s',
+                }}>
+                  {tag}
+                </span>
+              ))}
             </div>
+          </div>
 
-            {/* Game Features & Categories */}
-            <div>
-              <h3 style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 10px 0' }}>
-                Game Features & Categories
-              </h3>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {categories.map((cat, i) => (
-                  <span key={i} style={{
-                    background: 'var(--card-bg-alt)',
-                    color: 'var(--text-color)',
-                    border: '1.5px solid var(--card-border)',
-                    fontSize: '10px',
-                    fontWeight: '700',
-                    padding: '4px 10px',
-                    borderRadius: '8px',
-                    transition: 'background-color 0.15s, color 0.15s, border-color 0.15s',
-                  }}>
-                    {cat}
-                  </span>
-                ))}
-              </div>
+          {/* PC System Requirements */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <h3 style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>
+              PC System Requirements
+            </h3>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '16px',
+            }}>
+              {renderSpecsContainer('Minimum Specs', minSpecs, game.pcRequirementsMinimum, false)}
+              {renderSpecsContainer('Recommended Specs', recSpecs, game.pcRequirementsRecommended, true)}
             </div>
-
-            {/* Popular Genre Tags */}
-            <div>
-              <h3 style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', margin: '0 0 10px 0' }}>
-                Popular Genre Tags
-              </h3>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {game.tags.map((tag, i) => (
-                  <span key={i} style={{
-                    background: 'var(--card-bg)',
-                    color: 'var(--text-color)',
-                    border: '1.5px solid var(--card-border)',
-                    fontSize: '10px',
-                    fontWeight: '700',
-                    padding: '4px 10px',
-                    borderRadius: '99px',
-                    boxShadow: '0 2px 0 var(--card-shadow)',
-                    transition: 'background-color 0.15s, color 0.15s, border-color 0.15s, box-shadow 0.15s',
-                  }}>
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            </div>
-
-            {/* PC System Requirements */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <h3 style={{ fontSize: '11px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '1px', margin: 0 }}>
-                PC System Requirements
-              </h3>
-              
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: '16px',
-              }}>
-                {renderSpecsContainer('Minimum Specs', minSpecs, game.pcRequirementsMinimum, false)}
-                {renderSpecsContainer('Recommended Specs', recSpecs, game.pcRequirementsRecommended, true)}
-              </div>
-            </div>
-
           </div>
 
         </div>

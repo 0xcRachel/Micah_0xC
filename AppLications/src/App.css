@@ -38,6 +38,7 @@
   --tag-bg: #f0eee6;
   --button-hover-bg: #ede9e3;
   --led-color: #5f8370;
+  --led-btn: #5f8370;
   --on-led: #ffffff;
 }
 
@@ -55,6 +56,7 @@
   --tag-bg: #323230;
   --button-hover-bg: #3d3d3a;
   --led-color: #00ff66;
+  --led-btn: #1f6f4a;
   --on-led: #161615;
 }
 

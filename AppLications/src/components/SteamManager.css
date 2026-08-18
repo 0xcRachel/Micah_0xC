@@ -201,8 +201,8 @@
 .sm-btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
 
 .sm-btn.primary {
-  background: var(--led-color);
-  border-color: var(--led-color);
+  background: var(--led-btn);
+  border-color: var(--led-btn);
   color: #fff;
 }
 
@@ -353,8 +353,8 @@
 }
 
 .sm-log-tab.active {
-  background: var(--led-color);
-  border-color: var(--led-color);
+  background: var(--led-btn);
+  border-color: var(--led-btn);
   color: #fff;
 }
 
@@ -489,14 +489,14 @@
 }
 
 .sm-update-available {
-  border-color: var(--led-color);
+  border-color: var(--led-btn);
   background: rgba(95, 131, 112, 0.07);
 }
 
 .sm-update-version {
   font-size: 22px;
   font-weight: 900;
-  color: var(--led-color);
+  color: var(--led-btn);
   letter-spacing: 0.04em;
 }
 
