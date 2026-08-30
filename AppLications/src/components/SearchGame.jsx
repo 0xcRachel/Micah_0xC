@@ -73,19 +73,17 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
       setResults(items);
       if (items.length > 0) setIsOpen(true);
     } catch {
-      // Fallback for browser dev mode: use CORS proxies
+      // Fallback for browser dev mode: use CORS proxies with Steam Community Search
       try {
-        const steamUrl = `https://store.steampowered.com/api/storesearch/?term=${encodeURIComponent(q)}&l=english&cc=US`;
-        const json = await fetchWithProxy(steamUrl);
-        const items = (json.items || []).slice(0, 8).map((item) => ({
-          appid: item.id,
+        const searchUrl = `https://steamcommunity.com/actions/SearchApps/${encodeURIComponent(q)}`;
+        const json = await fetchWithProxy(searchUrl);
+        const items = (Array.isArray(json) ? json : []).slice(0, 8).map((item) => ({
+          appid: Number(item.appid) || 0,
           name: item.name,
-          // `tiny_image` from the API is the canonical (always-working) URL;
-          // the manually-built header URL 404s for pre-release/delisted titles.
-          header_image: item.tiny_image ||
-            `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${item.id}/header.jpg`,
+          header_image: item.logo ||
+            `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${item.appid}/header.jpg`,
         }));
-        setResults(items);
+        setResults(items.filter(it => it.appid > 0));
         if (items.length > 0) setIsOpen(true);
         else setResults([]);
       } catch {
@@ -138,56 +136,49 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
       };
       onSelectGame(gameObj);
     } catch {
-      // Fallback for browser dev mode: use CORS proxies
+      // Fallback for browser dev mode: use CORS proxies with SteamSpy
       try {
-        const steamUrl = `https://store.steampowered.com/api/appdetails?appids=${item.appid}&cc=US&l=english`;
-        const json = await fetchWithProxy(steamUrl);
-        const key = String(item.appid);
-        if (json[key]?.success) {
-          const d = json[key].data;
-          const mc = d.metacritic?.score || 0;
+        const spyUrl = `https://steamspy.com/api.php?request=appdetails&appid=${item.appid}`;
+        const d = await fetchWithProxy(spyUrl);
 
-          // Steam user reviews — the same data SteamDB shows. appdetails has
-          // no review info, so query the appreviews API as well.
-          let reviewDesc = '';
-          let reviewPositive = 0;
-          try {
-            const reviewUrl = `https://store.steampowered.com/appreviews/${item.appid}?json=1&language=all&purchase_type=all&num_per_page=0`;
-            const rj = await fetchWithProxy(reviewUrl);
-            const qs = rj?.query_summary;
-            const total = (qs?.total_positive || 0) + (qs?.total_negative || 0);
-            if (qs && total > 0) {
-              reviewDesc = qs.review_score_desc || '';
-              reviewPositive = Math.round((qs.total_positive / total) * 100);
-            }
-          } catch {
-            // Reviews unavailable (proxy hiccup) — Metacritic label below is used.
-          }
+        const positive = d.positive || 0;
+        const negative = d.negative || 0;
+        const total = positive + negative;
+        const reviewPct = total > 0 ? Math.round((positive / total) * 100) : 0;
+        const scoreLabel = total > 0
+          ? (reviewPct >= 95 ? 'Overwhelmingly Positive'
+            : reviewPct >= 80 ? 'Very Positive'
+            : reviewPct >= 70 ? 'Mostly Positive'
+            : reviewPct >= 50 ? 'Mixed'
+            : reviewPct >= 20 ? 'Mostly Negative'
+            : 'Overwhelmingly Negative')
+          : 'N/A';
 
-          const score = mc > 0 ? mc : reviewPositive;
-          const scoreLabel = reviewDesc ||
-            (mc >= 90 ? 'Overwhelmingly Positive' : mc >= 75 ? 'Very Positive' : mc >= 60 ? 'Mostly Positive' : mc > 0 ? 'Mixed' : 'N/A');
+        const priceCents = parseInt(d.price || '0', 10);
+        const price = priceCents === 0 ? 'Free' : `$${(priceCents / 100).toFixed(2)}`;
 
-          onSelectGame({
-            title: d.name,
-            developer: d.developers?.[0] || d.publishers?.[0] || 'Unknown',
-            imageSrc: d.header_image,
-            score,
-            scoreLabel,
-            price: d.is_free ? 'Free' : (d.price_overview?.final_formatted || 'N/A'),
-            tags: (d.genres || []).slice(0, 4).map(g => g.description),
-            categories: (d.categories || []).map(c => c.description),
-            publishers: d.publishers || [],
-            shortDescription: d.short_description || '',
-            releaseDate: d.release_date?.date || '',
-            metacritic: mc,
-            appid: item.appid,
-            pcRequirementsMinimum: d.pc_requirements?.minimum || '',
-            pcRequirementsRecommended: d.pc_requirements?.recommended || '',
-          });
-        } else {
-          throw new Error('appdetails returned no data');
-        }
+        const developers = (d.developer || '').split(',').map(s => s.trim()).filter(Boolean);
+        const publishers = (d.publisher || '').split(',').map(s => s.trim()).filter(Boolean);
+        const genres = (d.genre || '').split(',').map(s => s.trim()).filter(Boolean);
+        const categories = d.tags ? Object.keys(d.tags).slice(0, 10) : [];
+
+        onSelectGame({
+          title: d.name || item.name,
+          developer: developers[0] || publishers[0] || 'Unknown',
+          imageSrc: `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${item.appid}/header.jpg`,
+          score: reviewPct,
+          scoreLabel,
+          price,
+          tags: genres,
+          categories,
+          publishers,
+          shortDescription: '',
+          releaseDate: '',
+          metacritic: 0,
+          appid: item.appid,
+          pcRequirementsMinimum: '',
+          pcRequirementsRecommended: '',
+        });
       } catch {
         // Last resort: use minimal data from search result
         onSelectGame({

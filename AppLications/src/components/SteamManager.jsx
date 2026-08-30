@@ -743,11 +743,12 @@ const SteamManager = ({ onBack }) => {
   // without blocking the UI or flashing the spinner.
   useEffect(() => {
     if (!steamDir) return;
+    if (tab !== 'status' && tab !== 'dll') return;
     const id = setInterval(() => {
       api.scanState(steamDir).then(setScanData).catch(() => { });
     }, 10_000);
     return () => clearInterval(id);
-  }, [steamDir]);
+  }, [steamDir, tab]);
 
   return (
     <div ref={pageRef} className="sm-overlay">

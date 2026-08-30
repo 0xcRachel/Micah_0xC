@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
 // ==================== TYPES ====================
 
@@ -275,6 +276,21 @@ export const checkUpdateChannel = (channel: string, dotEnabled: boolean): Promis
 /** Download and install an update from the given channel */
 export const installUpdateChannel = (channel: string, dotEnabled: boolean): Promise<void> =>
   invoke<void>('install_update_channel', { channel, dotEnabled });
+
+// ==================== UPDATE EVENTS ====================
+
+export interface UpdateProgress {
+  chunk: number;
+  total: number | null;
+}
+
+/** Listen for update download progress events from the backend */
+export const onUpdateProgress = (cb: (progress: UpdateProgress) => void): Promise<UnlistenFn> =>
+  listen<UpdateProgress>('update-progress', (event) => cb(event.payload));
+
+/** Listen for update download finished event (before installer launches) */
+export const onUpdateFinished = (cb: () => void): Promise<UnlistenFn> =>
+  listen('update-finished', () => cb());
 
 // ==================== STEAM PROCESS ====================
 

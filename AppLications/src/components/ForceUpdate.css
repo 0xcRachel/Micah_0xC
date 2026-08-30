@@ -263,3 +263,66 @@
 .dark-mode .fu-btn-secondary:hover {
   background: #3d3d3a;
 }
+
+/* ---- Badge success state ---- */
+
+.fu-badge-success {
+  background: linear-gradient(135deg, #4d9e6a, #3a8a57) !important;
+  box-shadow: 0 6px 0 #2a6b3f, 0 12px 24px rgba(77, 158, 106, 0.3) !important;
+}
+
+.fu-badge-success + .fu-pulse-ring {
+  border-color: rgba(77, 158, 106, 0.3);
+}
+
+/* ---- Progress bar ---- */
+
+.fu-progress-wrap {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.fu-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: var(--card-bg-alt, #f0eee6);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.fu-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #e05555, #c43e3e);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.fu-progress-text {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-color, #30302e);
+}
+
+/* ---- Error message ---- */
+
+.fu-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(224, 85, 85, 0.1);
+  border: 1px solid rgba(224, 85, 85, 0.3);
+  color: #e05555;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 16px;
+  text-align: left;
+}
+
+.dark-mode .fu-error {
+  background: rgba(224, 85, 85, 0.15);
+  border-color: rgba(224, 85, 85, 0.3);
+  color: #f08080;
+}

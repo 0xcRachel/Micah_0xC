@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
-import { closeWindow, checkVersionRequirement } from './api';
+import { closeWindow, checkVersionRequirement, checkUpdateChannel } from './api';
 import IntroOverlay from './components/IntroOverlay';
 import Background from './components/Background';
 import Character from './components/Character';
@@ -57,6 +57,41 @@ const App = () => {
         setVersionChecked(true);
       });
   }, []);
+
+  // Background update check — runs every 30 minutes after startup.
+  // Only triggers if startup check showed no update (status === 'none').
+  // If the user has already dismissed an optional update, don't re-check
+  // during the same session.
+  useEffect(() => {
+    if (versionInfo?.status !== 'none') return;
+
+    const CHECK_INTERVAL = 30 * 60 * 1000; // 30 minutes
+    let dismissed = false;
+
+    const interval = setInterval(() => {
+      if (dismissed) return;
+      checkUpdateChannel('stable', false)
+        .then((info) => {
+          if (info.available && !dismissed) {
+            console.log('[BackgroundUpdate] new version found:', info.version);
+            setVersionInfo({
+              current_version: info.current_version,
+              minimum_version: info.current_version,
+              latest_version: info.version,
+              download_url: '',
+              release_notes: info.body || '',
+              status: 'optional',
+            });
+          }
+        })
+        .catch(() => {}); // Silent fail — network issues are expected
+    }, CHECK_INTERVAL);
+
+    return () => {
+      clearInterval(interval);
+      dismissed = true;
+    };
+  }, [versionInfo?.status]);
 
   const [currentPage, setCurrentPage] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
