@@ -3,6 +3,8 @@ import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import * as api from '../api.ts';
 import { useSync } from '../sync/SyncProvider';
+import Spinner from './Spinner';
+import Skeleton from './Skeleton';
 import './SteamManager.css';
 
 
@@ -11,8 +13,6 @@ const Led = ({ on, warn }) => {
   if (warn) return <span className="sm-led yellow" />;
   return <span className={`sm-led ${on ? 'green' : 'red'}`} />;
 };
-
-const Spinner = () => <span className="sm-spinner" aria-label="loading" />;
 
 const Toast = ({ message, type }) =>
   message ? (
@@ -472,7 +472,12 @@ const TabLogs = ({ steamDir, show }) => {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  if (loading) return <p className="sm-empty"><Spinner /> Loading logs…</p>;
+  if (loading) return (
+    <div style={{ padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <Skeleton width="40%" height={12} />
+      <Skeleton lines={6} height={10} />
+    </div>
+  );
   if (!logs.length) return (
     <div>
       <div className="sm-action-row">
@@ -549,7 +554,16 @@ const TabSettings = ({ steamDir, show }) => {
     finally { setSaving(false); }
   };
 
-  if (loading) return <p className="sm-empty"><Spinner /></p>;
+  if (loading) return (
+    <div style={{ padding: '8px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <Skeleton width="35%" height={12} />
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <Skeleton width="100%" height={28} rounded={6} />
+        <Skeleton width="100%" height={28} rounded={6} />
+        <Skeleton width="100%" height={28} rounded={6} />
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -612,17 +626,24 @@ const TabSettings = ({ steamDir, show }) => {
 // ==================== TAB CONTENT WRAPPER ====================
 // Mounts fresh on every tab switch — GSAP fires cleanly each time.
 // Light fade+slide only (no scale — avoids blurry text and layout cost).
-const TabContent = ({ children }) => {
+const TabContent = ({ children, visible }) => {
   const wrapRef = useRef(null);
   useGSAP(() => {
-    if (prefersReducedMotion()) return;
+    if (!visible || prefersReducedMotion()) return;
     gsap.fromTo(
       wrapRef.current,
       { opacity: 0, y: 10 },
       { opacity: 1, y: 0, duration: 0.26, ease: 'power2.out' }
     );
-  }, { scope: wrapRef });
-  return <div ref={wrapRef} style={{ height: '100%' }}>{children}</div>;
+  }, { scope: wrapRef, dependencies: [visible] });
+  return (
+    <div
+      ref={wrapRef}
+      style={{ height: '100%', display: visible ? 'block' : 'none' }}
+    >
+      {children}
+    </div>
+  );
 };
 
 // ==================== MAIN COMPONENT ====================
@@ -796,27 +817,25 @@ const SteamManager = ({ onBack }) => {
           ))}
         </div>
 
-        {/* Body — key={tab} forces TabContent to unmount+remount on every switch */}
+        {/* Body — all tabs rendered, only active one visible (preserves state across switches) */}
         <div className="sm-body">
-          <TabContent key={tab}>
-            {tab === 'status' && (
-              <TabStatus steamDir={steamDir} scanData={scanData}
-                onRefresh={handleScan} loading={scanLoading} />
-            )}
-            {tab === 'dll' && (
-              <TabDll steamDir={steamDir} scanData={scanData}
-                onRefresh={handleScan} show={show} />
-            )}
-            {tab === 'games' && (
-              <TabGames steamDir={steamDir} show={show}
-                games={games} gamesLoading={gamesLoading} refreshGames={refreshGames} />
-            )}
-            {tab === 'logs' && (
-              <TabLogs steamDir={steamDir} show={show} />
-            )}
-            {tab === 'settings' && (
-              <TabSettings steamDir={steamDir} show={show} />
-            )}
+          <TabContent visible={tab === 'status'}>
+            <TabStatus steamDir={steamDir} scanData={scanData}
+              onRefresh={handleScan} loading={scanLoading} />
+          </TabContent>
+          <TabContent visible={tab === 'dll'}>
+            <TabDll steamDir={steamDir} scanData={scanData}
+              onRefresh={handleScan} show={show} />
+          </TabContent>
+          <TabContent visible={tab === 'games'}>
+            <TabGames steamDir={steamDir} show={show}
+              games={games} gamesLoading={gamesLoading} refreshGames={refreshGames} />
+          </TabContent>
+          <TabContent visible={tab === 'logs'}>
+            <TabLogs steamDir={steamDir} show={show} />
+          </TabContent>
+          <TabContent visible={tab === 'settings'}>
+            <TabSettings steamDir={steamDir} show={show} />
           </TabContent>
         </div>
 

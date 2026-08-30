@@ -316,16 +316,9 @@ const ForceUpdate = ({ versionInfo, isOptional, onSkip }) => {
                 </svg>
                 Update Now
               </button>
-              {isOptional && (
-                <button className="fu-btn fu-btn-secondary" onClick={handleClose}>
-                  Skip for Now
-                </button>
-              )}
-              {!isOptional && (
-                <button className="fu-btn fu-btn-secondary" onClick={() => window.close()}>
-                  Quit
-                </button>
-              )}
+              <button className="fu-btn fu-btn-secondary" onClick={() => window.close()}>
+                Quit
+              </button>
             </>
           )}
 

@@ -3,6 +3,7 @@ import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { useSync } from '../sync/SyncProvider';
 import * as api from '../api.ts';
+import Spinner from '../components/Spinner';
 
 const Toggle = ({ settingKey, defaultOn = false, checked, onChange, id }) => {
   const saved = localStorage.getItem(`setting_${settingKey}`);
@@ -63,21 +64,19 @@ const SyncStatusChip = ({ status, error }) => {
     error: { label: 'Sync error', color: '#e05555' },
   };
   const s = map[status] ?? map.idle;
+  const pulseClass =
+    status === 'syncing' ? 'sync-dot-syncing' : status === 'error' ? 'sync-dot-error' : '';
   return (
     <span
       title={error ? `Sync error: ${error}` : `Sync: ${status}`}
       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold
         bg-[var(--card-bg)] border border-[var(--card-border)]/10 whitespace-nowrap"
     >
-      <span className="w-1.5 h-1.5 rounded-full" style={{ background: s.color }} />
+      <span className={`w-1.5 h-1.5 rounded-full ${pulseClass}`} style={{ background: s.color }} />
       {s.label}
     </span>
   );
 };
-
-const TinySpinner = () => (
-  <span className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin shrink-0" />
-);
 
 const SettingsPage = ({
   onBack,
@@ -258,7 +257,7 @@ const SettingsPage = ({
                       >
                         {busy || loginState === 'waiting' ? (
                           <>
-                            <TinySpinner />
+                            <Spinner />
                             <span>Waiting…</span>
                           </>
                         ) : loginState === 'error' ? (
@@ -332,7 +331,7 @@ const SettingsPage = ({
                           transition-all duration-200"
                         title="Push your setup to the cloud now"
                       >
-                        {busy ? <TinySpinner /> : null} Sync Now
+                        {busy ? <Spinner /> : null} Sync Now
                       </button>
                       <button
                         onClick={handleRestore}

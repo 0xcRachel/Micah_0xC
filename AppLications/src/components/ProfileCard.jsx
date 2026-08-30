@@ -497,4 +497,4 @@ const GameCard = ({
   );
 };
 
-export default GameCard;
+export default React.memo(GameCard);

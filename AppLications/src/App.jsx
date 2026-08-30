@@ -7,14 +7,16 @@ import IntroOverlay from './components/IntroOverlay';
 import Background from './components/Background';
 import Character from './components/Character';
 import ForceUpdate from './components/ForceUpdate';
-import SettingsPage from './pages/SettingsPage';
-import LikePage from './pages/LikePage';
 import ProfileCard from './components/ProfileCard';
 import SearchGame from './components/SearchGame';
 import SystemInfoCard from './components/SystemInfoCard';
 import ImagePreviewModal from './components/ImagePreviewModal';
-import SteamManager from './components/SteamManager';
 import AuthBadge from './components/AuthBadge';
+import Spinner from './components/Spinner';
+
+const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
+const LikePage = React.lazy(() => import('./pages/LikePage'));
+const SteamManager = React.lazy(() => import('./components/SteamManager'));
 import { SyncProvider, useSync } from './sync/SyncProvider';
 
 import charLight from '../../assets/img/char.png';
@@ -256,14 +258,7 @@ const App = () => {
         gap: 16,
         background: 'var(--bg-color, #f8f6f0)',
       }}>
-        <span style={{
-          width: 36,
-          height: 36,
-          border: '3px solid var(--text-muted, #87867f)',
-          borderTopColor: 'var(--text-color, #30302e)',
-          borderRadius: '50%',
-          animation: 'fu-spin 0.7s linear infinite',
-        }} />
+        <Spinner size={36} />
         <p style={{ fontSize: 13, color: 'var(--text-muted, #87867f)', margin: 0 }}>
           Checking for updates…
         </p>
@@ -344,21 +339,23 @@ const App = () => {
       </div>
 
       {/* Full-screen pages — mount only when active, unmount after exit animation */}
-      {currentPage === 'settings' && (
-        <SettingsPage
-          onBack={handleBack}
-          isDarkMode={isDarkMode}
-          onToggleDarkMode={handleToggleDarkMode}
-          animationsEnabled={animationsEnabled}
-          onToggleAnimations={handleToggleAnimations}
-        />
-      )}
-      {currentPage === 'like' && (
-        <LikePage onBack={handleBack} />
-      )}
-      {currentPage === 'steam' && (
-        <SteamManager onBack={handleBack} />
-      )}
+      <React.Suspense fallback={<Spinner size={24} />}>
+        {currentPage === 'settings' && (
+          <SettingsPage
+            onBack={handleBack}
+            isDarkMode={isDarkMode}
+            onToggleDarkMode={handleToggleDarkMode}
+            animationsEnabled={animationsEnabled}
+            onToggleAnimations={handleToggleAnimations}
+          />
+        )}
+        {currentPage === 'like' && (
+          <LikePage onBack={handleBack} />
+        )}
+        {currentPage === 'steam' && (
+          <SteamManager onBack={handleBack} />
+        )}
+      </React.Suspense>
 
       {/* Image Preview Modal (Lightbox) */}
       {showPreview && selectedGame && (

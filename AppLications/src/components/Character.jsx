@@ -271,4 +271,4 @@ const Character = ({
   );
 };
 
-export default Character;
+export default React.memo(Character);

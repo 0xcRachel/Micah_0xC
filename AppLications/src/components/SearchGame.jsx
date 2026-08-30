@@ -2,6 +2,7 @@ import React, { useState, useRef, useCallback } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { invoke } from '@tauri-apps/api/core';
+import Spinner from './Spinner';
 
 // Register GSAP hook
 gsap.registerPlugin(useGSAP);
@@ -294,10 +295,7 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
           {/* Loading spinner or clear button */}
           {isLoading ? (
             <span style={{ display: 'inline-flex', color: 'var(--text-muted)' }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-                style={{ animation: 'spin 0.8s linear infinite' }}>
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-              </svg>
+              <Spinner size={16} />
             </span>
           ) : query ? (
             <button
@@ -388,9 +386,6 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
         </div>
       )}
 
-      {/* Global spinner style */}
-      <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
-
       {/* Loading detail overlay */}
       {isLoadingDetail && (
         <div style={{
@@ -411,10 +406,7 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
           gap: '8px',
           backdropFilter: 'blur(3px)',
         }}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-            style={{ animation: 'spin 0.8s linear infinite' }}>
-            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-          </svg>
+          <Spinner size={16} />
           Loading game data from Steam...
         </div>
       )}

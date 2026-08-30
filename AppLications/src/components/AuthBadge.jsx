@@ -1,5 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import gsap from 'gsap';
+import { useGSAP } from '@gsap/react';
 import { useSync } from '../sync/SyncProvider';
+import Spinner from './Spinner';
+
+gsap.registerPlugin(useGSAP);
+
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' &&
+  window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const SyncDot = () => {
   const { syncStatus, syncError } = useSync();
@@ -11,28 +20,21 @@ const SyncDot = () => {
         : syncStatus === 'synced'
           ? 'var(--led-color, #4d9e6a)'
           : 'var(--text-muted, #87867f)';
+  const pulseClass =
+    syncStatus === 'syncing'
+      ? 'sync-dot-syncing'
+      : syncStatus === 'error'
+        ? 'sync-dot-error'
+        : '';
   return (
     <span
       title={syncError ? `Sync error: ${syncError}` : `Sync: ${syncStatus}`}
-      className="inline-block w-2 h-2 rounded-full shrink-0"
+      className={`inline-block w-2 h-2 rounded-full shrink-0 ${pulseClass}`}
       style={{ background: color }}
     />
   );
 };
 
-const Spinner = () => (
-  <span className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin shrink-0" />
-);
-
-/**
- * Floating auth badge.
- *  - Guest mode: "Guest Mode (Local Only)" + "Sync with Discord" upgrade button.
- *  - Discord mode: avatar + username + sync status + sign out.
- *
- * Both modes share one fixed-height pill; switching between them (login /
- * sign out / boot) morphs the inner content with a fade-slide animation so
- * the badge never jumps or reflows.
- */
 const AuthBadge = () => {
   const {
     booting,
@@ -48,6 +50,9 @@ const AuthBadge = () => {
     supabaseConfigured,
   } = useSync();
 
+  const containerRef = useRef(null);
+  const contentRef = useRef(null);
+  const prevModeRef = useRef(null);
   const [busy, setBusy] = useState(false);
 
   const handleLogin = async () => {
@@ -86,8 +91,25 @@ const AuthBadge = () => {
   const mode = booting ? 'booting' : isGuest ? 'guest' : 'user';
   const loginPending = loginState === 'opening' || loginState === 'waiting' || busy;
 
+  // GSAP mode transition — animates content in on mode change
+  useGSAP(() => {
+    if (!contentRef.current) return;
+    if (prefersReducedMotion()) return;
+
+    // Only animate if this is a mode switch (not initial mount)
+    if (prevModeRef.current !== null && prevModeRef.current !== mode) {
+      gsap.fromTo(
+        contentRef.current,
+        { opacity: 0, y: 6, scale: 0.96 },
+        { opacity: 1, y: 0, scale: 1, duration: 0.3, ease: 'back.out(1.5)' },
+      );
+    }
+    prevModeRef.current = mode;
+  }, { scope: containerRef, dependencies: [mode] });
+
   return (
     <div
+      ref={containerRef}
       className={`fixed top-4 right-4 z-50 flex items-center gap-2 h-9 rounded-full border shadow-lg
         backdrop-blur-md transition-colors duration-300
         ${loginError
@@ -96,7 +118,7 @@ const AuthBadge = () => {
         bg-[var(--card-bg)]/85 px-3`}
       title={loginError ? `Login failed: ${loginError}` : undefined}
     >
-      <div key={mode} className="sm-badge-fade flex items-center gap-2 min-w-0">
+      <div ref={contentRef} className="flex items-center gap-2 min-w-0">
         {mode === 'booting' && (
           <>
             <Spinner />

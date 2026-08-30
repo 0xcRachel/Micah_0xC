@@ -2,6 +2,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { invoke } from '@tauri-apps/api/core';
+import Skeleton from './Skeleton';
 
 gsap.registerPlugin(useGSAP);
 
@@ -70,13 +71,14 @@ const detectBrowserFallbackInfo = () => {
 
 const SystemInfoCard = ({ className = '', style = {} }) => {
   const [sysInfo, setSysInfo] = useState({
-    os: 'Detecting...',
-    cpu: 'Detecting...',
-    cores: 'Detecting...',
-    ram: 'Detecting...',
+    os: '',
+    cpu: '',
+    cores: '',
+    ram: '',
     resolution: `${window.screen.width} x ${window.screen.height}`,
-    gpu: 'Detecting...',
+    gpu: '',
   });
+  const [detecting, setDetecting] = useState(true);
   const [machineCode, setMachineCode] = useState('');
   const [status, setStatus] = useState('ONLINE');
   const cardRef = useRef(null);
@@ -99,6 +101,8 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
       } catch (err) {
         console.warn('Could not call Tauri backend, using browser fallback:', err);
         setSysInfo(detectBrowserFallbackInfo());
+      } finally {
+        setDetecting(false);
       }
     };
 
@@ -203,43 +207,43 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
         {/* Machine ID */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Machine Code</span>
-          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)', fontFamily: 'monospace' }}>{machineCode}</span>
+          {detecting ? <Skeleton width="60%" height={13} /> : <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)', fontFamily: 'monospace' }}>{machineCode}</span>}
         </div>
 
         {/* Operating System */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Operating System</span>
-          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.os}</span>
+          {detecting ? <Skeleton width="50%" height={13} /> : <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.os}</span>}
         </div>
 
         {/* Processor Name */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: 'span 2' }}>
           <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Processor</span>
-          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sysInfo.cpu}</span>
+          {detecting ? <Skeleton width="70%" height={13} /> : <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sysInfo.cpu}</span>}
         </div>
 
         {/* CPU Cores count */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Logical Cores</span>
-          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.cores}</span>
+          {detecting ? <Skeleton width="30%" height={13} /> : <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.cores}</span>}
         </div>
 
         {/* RAM Size */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Memory</span>
-          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.ram}</span>
+          {detecting ? <Skeleton width="25%" height={13} /> : <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.ram}</span>}
         </div>
 
         {/* Display Resolution */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: 'span 2' }}>
           <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Resolution</span>
-          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.resolution}</span>
+          {detecting ? <Skeleton width="40%" height={13} /> : <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.resolution}</span>}
         </div>
 
         {/* Graphics Engine */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: 'span 2', borderTop: '1px solid var(--card-border)', opacity: 0.9, paddingTop: '8px', marginTop: '4px' }}>
           <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Graphics Processing Unit</span>
-          <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={sysInfo.gpu}>{sysInfo.gpu}</span>
+          {detecting ? <Skeleton width="60%" height={12} /> : <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={sysInfo.gpu}>{sysInfo.gpu}</span>}
         </div>
       </div>
 
@@ -252,4 +256,4 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
   );
 };
 
-export default SystemInfoCard;
+export default React.memo(SystemInfoCard);

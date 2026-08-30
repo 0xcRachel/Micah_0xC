@@ -24,6 +24,65 @@
   }
 }
 
+/* SyncDot pulse animation */
+@keyframes sync-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 179, 60, 0.4); }
+  50% { box-shadow: 0 0 0 5px rgba(224, 179, 60, 0); }
+}
+@keyframes sync-error-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 85, 85, 0.4); }
+  50% { box-shadow: 0 0 0 5px rgba(224, 85, 85, 0); }
+}
+
+.sync-dot-syncing { animation: sync-pulse 1.2s ease-in-out infinite; }
+.sync-dot-error { animation: sync-error-pulse 1.2s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sync-dot-syncing,
+  .sync-dot-error {
+    animation: none;
+  }
+}
+
+/* Skeleton shimmer loading */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--card-bg-alt, #f0eee6) 25%,
+    var(--card-bg, #faf9f6) 50%,
+    var(--card-bg-alt, #f0eee6) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite;
+}
+
+.dark-mode .skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--card-bg-alt, #323230) 25%,
+    var(--card-bg, #262624) 50%,
+    var(--card-bg-alt, #323230) 75%
+  );
+  background-size: 200% 100%;
+}
+
+.skeleton-static {
+  animation: none;
+  background: var(--card-bg-alt, #f0eee6);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer {
+    animation: none;
+    background: var(--card-bg-alt, #f0eee6);
+  }
+}
+
 :root {
   --bg-color: #f8f6f0;
   --bg-grid: #f9f8f4;
