@@ -99,7 +99,7 @@ const App = () => {
   const [selectedGame, setSelectedGame] = useState({
     title: 'Made By 0xcRachel',
     developer: '0xcRachel',
-    imageSrc: 'https://i.pinimg.com/736x/c4/ea/c5/c4eac5f03beb69fac689e5c844b3db30.jpg',
+    imageSrc: 'https://i.pinimg.com/736x/06/48/7e/06487edbf6b5d533d311b71303d16952.jpg',
     score: 100,
     scoreLabel: 'Overwhelmingly Positive',
     price: '$99.99',

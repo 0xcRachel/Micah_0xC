@@ -84,8 +84,21 @@ const Character = ({
   const { contextSafe } = useGSAP({ scope: containerRef });
 
   const toggleOpen = contextSafe(() => {
+    // Kill any in-flight menu tweens so rapid clicks never stack two
+    // timelines fighting over the same spheres (visible stutter).
+    gsap.killTweensOf([
+      sphere1Ref.current,
+      sphere2Ref.current,
+      sphere3Ref.current,
+      sphere4Ref.current,
+      characterRef.current,
+    ]);
     if (!isOpen) {
-      const tl = gsap.timeline({ onComplete: () => setIsOpen(true) });
+      // Raise the sphere layer ABOVE the character (z 2 → 10) BEFORE the
+      // fan-out starts. Previously this ran in onComplete, so spheres flew
+      // out hidden behind the character then visibly popped to front.
+      setIsOpen(true);
+      const tl = gsap.timeline();
 
       // Character tilts and slides down
       tl.to(characterRef.current, {
