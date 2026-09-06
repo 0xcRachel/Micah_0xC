@@ -121,7 +121,7 @@
 }
 
 .fu-version-new {
-  color: #4d9e6a;
+  color: var(--remi-accent, #4d9e6a);
 }
 
 .fu-version-separator {
@@ -240,8 +240,8 @@
 /* ---- Dark mode overrides ---- */
 
 .dark-mode .fu-card {
-  background: #1e1e1c;
-  border-color: #4d4d4a;
+  background: var(--card-bg);
+  border-color: var(--card-border);
 }
 
 .dark-mode .fu-badge {
@@ -251,17 +251,26 @@
 
 .dark-mode .fu-version-row,
 .dark-mode .fu-notes {
-  background: #2a2a28;
+  background: var(--card-bg-alt);
 }
 
 .dark-mode .fu-btn-secondary {
-  background: #2a2a28;
-  border-color: #4d4d4a;
-  color: #faf9f6;
+  background: var(--card-bg-alt);
+  border-color: var(--card-border);
+  color: var(--text-color);
 }
 
 .dark-mode .fu-btn-secondary:hover {
-  background: #3d3d3a;
+  background: var(--button-hover-bg);
+}
+
+.dark-mode .fu-badge-success {
+  background: linear-gradient(135deg, #ff5fa8, #a8346b) !important;
+  box-shadow: 0 6px 0 #5e1f40, 0 12px 24px rgba(255, 95, 168, 0.3) !important;
+}
+
+.dark-mode .fu-badge-success + .fu-pulse-ring {
+  border-color: rgba(255, 95, 168, 0.3);
 }
 
 /* ---- Badge success state ---- */
@@ -293,7 +302,7 @@
 
 .fu-progress-fill {
   height: 100%;
-  background: linear-gradient(90deg, #e05555, #c43e3e);
+  background: linear-gradient(90deg, var(--remi-arc, #1f9e95), var(--remi-accent, #ec5fa2));
   border-radius: 4px;
   transition: width 0.3s ease;
 }

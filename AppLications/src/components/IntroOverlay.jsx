@@ -9,12 +9,15 @@ import { useGSAP } from '@gsap/react';
  * are split in the React render loop and staggered in one-by-one.
  */
 
+// Theme-aware curtain: colors resolve from CSS vars so the intro follows
+// white mode / dark mode automatically. Custom `stripes` prop (plain hex)
+// still works as before.
 const DEFAULT_STRIPES = [
-  { bg: '#f0eee6' },  // 0 — warm cream
-  { bg: '#c4b99a' },  // 1 — warm sand
-  { bg: '#87867f' },  // 2 — olive gray
-  { bg: '#4d4c48' },  // 3 — dark warm gray
-  { bg: '#30302e' },  // 4 — near-black olive
+  { bg: 'var(--intro-1)' },
+  { bg: 'var(--intro-2)' },
+  { bg: 'var(--intro-3)' },
+  { bg: 'var(--intro-4)' },
+  { bg: 'var(--intro-5)' },
 ];
 
 const DEFAULT_STEPS = [
@@ -106,18 +109,18 @@ const IntroOverlay = ({
         '<'
       );
 
-      // Animate subtitle expanding tracking + fading in
+      // Animate subtitle fading in. NOTE: animating letter-spacing forces a
+      // full text re-layout every frame (jank on low-end GPUs), so the old
+      // tracking-expansion was replaced with a static wide tracking below.
       if (step.subtitle) {
         tl.fromTo(`.subtitle-${idx}`,
           {
             autoAlpha: 0,
             y: 10,
-            letterSpacing: '0.1em'
           },
           {
             autoAlpha: 1,
             y: 0,
-            letterSpacing: '0.3em',
             duration: enterDur * 0.9,
             ease: 'power3.out'
           },
@@ -183,7 +186,7 @@ const IntroOverlay = ({
             className="absolute flex flex-col items-center justify-center gap-5 w-full text-center px-4"
           >
             {/* Title with split characters */}
-            <h2 className="text-5xl md:text-6xl font-black tracking-[0.25em] text-[#FFF7E5] uppercase flex flex-wrap justify-center overflow-hidden py-2">
+            <h2 className="text-5xl md:text-6xl font-black tracking-[0.25em] uppercase flex flex-wrap justify-center overflow-hidden py-2" style={{ color: 'var(--intro-text)' }}>
               {step.title.split('').map((char, charIdx) => (
                 <span
                   key={charIdx}
@@ -201,7 +204,7 @@ const IntroOverlay = ({
 
             {/* Subtitle */}
             {step.subtitle && (
-              <p className={`subtitle-${stepIdx} text-xs md:text-sm text-[#87867f] font-mono uppercase transform-gpu`}>
+              <p className={`subtitle-${stepIdx} text-xs md:text-sm font-mono uppercase tracking-[0.3em] transform-gpu`} style={{ color: 'var(--intro-sub)' }}>
                 {step.subtitle}
               </p>
             )}

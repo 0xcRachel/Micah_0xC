@@ -3,7 +3,6 @@ import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { useSync } from '../sync/SyncProvider';
 import * as api from '../api.ts';
-import Spinner from '../components/Spinner';
 
 const Toggle = ({ settingKey, defaultOn = false, checked, onChange, id }) => {
   const saved = localStorage.getItem(`setting_${settingKey}`);
@@ -64,19 +63,21 @@ const SyncStatusChip = ({ status, error }) => {
     error: { label: 'Sync error', color: '#e05555' },
   };
   const s = map[status] ?? map.idle;
-  const pulseClass =
-    status === 'syncing' ? 'sync-dot-syncing' : status === 'error' ? 'sync-dot-error' : '';
   return (
     <span
       title={error ? `Sync error: ${error}` : `Sync: ${status}`}
       className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold
         bg-[var(--card-bg)] border border-[var(--card-border)]/10 whitespace-nowrap"
     >
-      <span className={`w-1.5 h-1.5 rounded-full ${pulseClass}`} style={{ background: s.color }} />
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: s.color }} />
       {s.label}
     </span>
   );
 };
+
+const TinySpinner = () => (
+  <span className="remi-spinner w-3 h-3" />
+);
 
 const SettingsPage = ({
   onBack,
@@ -227,7 +228,7 @@ const SettingsPage = ({
                 {booting && (
                   <div className="px-4 py-4 flex items-center gap-3">
                     <span className="w-10 h-10 rounded-full bg-[var(--text-muted)]/10 flex items-center justify-center shrink-0">
-                      <span className="w-4 h-4 rounded-full border-2 border-[var(--text-muted)] border-t-transparent animate-spin" />
+                      <span className="remi-spinner w-4 h-4" />
                     </span>
                     <div>
                       <p className="text-sm font-bold text-[var(--text-color)]">Restoring session…</p>
@@ -257,7 +258,7 @@ const SettingsPage = ({
                       >
                         {busy || loginState === 'waiting' ? (
                           <>
-                            <Spinner />
+                            <TinySpinner />
                             <span>Waiting…</span>
                           </>
                         ) : loginState === 'error' ? (
@@ -328,10 +329,10 @@ const SettingsPage = ({
                         disabled={busy}
                         className="flex-1 px-3 h-8 rounded-full text-[11px] font-bold text-[var(--on-led)] cursor-pointer
                           bg-[var(--led-color)] hover:brightness-110 disabled:opacity-50
-                          transition-all duration-200"
+                          transition-all duration-200 inline-flex items-center justify-center gap-1.5 whitespace-nowrap"
                         title="Push your setup to the cloud now"
                       >
-                        {busy ? <Spinner /> : null} Sync Now
+                        {busy ? <TinySpinner /> : null}<span>Sync Now</span>
                       </button>
                       <button
                         onClick={handleRestore}

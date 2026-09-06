@@ -18,7 +18,7 @@
 }
 
 .dark-mode .sm-backdrop {
-  background: rgba(22, 22, 21, 0.88);
+  background: rgba(22, 18, 21, 0.88);
   opacity: 0;
 }
 
@@ -523,8 +523,8 @@
   display: inline-block;
   width: 14px;
   height: 14px;
-  border: 2px solid currentColor;
-  border-top-color: transparent;
+  border: 2px solid var(--remi-track, currentColor);
+  border-top-color: var(--remi-arc, currentColor);
   border-radius: 50%;
   animation: sm-spin 0.7s linear infinite;
   flex-shrink: 0;

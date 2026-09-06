@@ -1,6 +1,6 @@
 {
   "minimum_version": "0.1.0",
-  "latest_version": "0.8.0",
+  "latest_version": "1.0.0",
   "download_url": "https://github.com/0xcRachel/Micah_0xC/releases/latest/download/Micah_0xC.exe",
-  "release_notes": "0.8.0: auto-update system, SteamSpy + Steam Community APIs, performance optimizations, signing key support."
+  "release_notes": "1.0.0: fix new games invisible on Steam Sept update (PICS discovery), version badge, auto-update system, SteamSpy + Steam Community APIs."
 }

@@ -2,7 +2,6 @@ import React, { useState, useRef, useCallback } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { invoke } from '@tauri-apps/api/core';
-import Spinner from './Spinner';
 
 // Register GSAP hook
 gsap.registerPlugin(useGSAP);
@@ -74,21 +73,46 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
       setResults(items);
       if (items.length > 0) setIsOpen(true);
     } catch {
-      // Fallback for browser dev mode: use CORS proxies with Steam Community Search
+      // Fallback for browser dev mode: CheapShark direct first (works where
+      // Steam domains are blocked), then CORS proxies with Steam Community.
       try {
-        const searchUrl = `https://steamcommunity.com/actions/SearchApps/${encodeURIComponent(q)}`;
-        const json = await fetchWithProxy(searchUrl);
-        const items = (Array.isArray(json) ? json : []).slice(0, 8).map((item) => ({
-          appid: Number(item.appid) || 0,
-          name: item.name,
-          header_image: item.logo ||
-            `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${item.appid}/header.jpg`,
-        }));
-        setResults(items.filter(it => it.appid > 0));
+        const sharkUrl = `https://www.cheapshark.com/api/1.0/games?title=${encodeURIComponent(q)}&limit=10`;
+        let shark = null;
+        try {
+          const resp = await fetch(sharkUrl, { signal: AbortSignal.timeout(6000) });
+          if (resp.ok) shark = await resp.json();
+        } catch {
+          // direct fetch failed (CORS/network) — fall through to proxies
+        }
+        let items = [];
+        if (Array.isArray(shark)) {
+          items = shark.map((g) => ({
+            appid: Number(g.steamAppID) || 0,
+            name: g.external,
+            header_image: g.thumb ||
+              `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.steamAppID}/header.jpg`,
+          })).filter(it => it.appid > 0).slice(0, 8);
+        }
+        if (items.length === 0) {
+          const searchUrl = `https://steamcommunity.com/actions/SearchApps/${encodeURIComponent(q)}`;
+          const json = await fetchWithProxy(searchUrl);
+          const list = (Array.isArray(json) ? json : []).slice(0, 8).map((item) => ({
+            appid: Number(item.appid) || 0,
+            name: item.name,
+            header_image: item.logo ||
+              `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${item.appid}/header.jpg`,
+          }));
+          items = list.filter(it => it.appid > 0);
+        }
+        const needle = q.trim().toLowerCase();
+        items.sort((a, b) =>
+          (b.name.toLowerCase().startsWith(needle) ? 1 : 0) -
+          (a.name.toLowerCase().startsWith(needle) ? 1 : 0));
+        setResults(items);
         if (items.length > 0) setIsOpen(true);
         else setResults([]);
       } catch {
-        console.warn('Steam search: all proxies failed. Please run via Tauri (cargo tauri dev).');
+        console.warn('Steam search: all sources failed. Please run via Tauri (cargo tauri dev).');
         setResults([]);
       }
     } finally {
@@ -294,8 +318,11 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
 
           {/* Loading spinner or clear button */}
           {isLoading ? (
-            <span style={{ display: 'inline-flex', color: 'var(--text-muted)' }}>
-              <Spinner size={16} />
+            <span style={{ display: 'inline-flex', color: 'var(--remi-arc, #1f9e95)' }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                style={{ animation: 'spin 0.8s linear infinite' }}>
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+              </svg>
             </span>
           ) : query ? (
             <button
@@ -386,6 +413,9 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
         </div>
       )}
 
+      {/* Global spinner style */}
+      <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+
       {/* Loading detail overlay */}
       {isLoadingDetail && (
         <div style={{
@@ -406,7 +436,7 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
           gap: '8px',
           backdropFilter: 'blur(3px)',
         }}>
-          <Spinner size={16} />
+          <span className="remi-spinner" style={{ width: 16, height: 16 }} />
           Loading game data from Steam...
         </div>
       )}

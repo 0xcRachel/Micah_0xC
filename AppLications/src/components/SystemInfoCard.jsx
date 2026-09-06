@@ -2,7 +2,6 @@ import React, { useRef, useState, useEffect } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { invoke } from '@tauri-apps/api/core';
-import Skeleton from './Skeleton';
 
 gsap.registerPlugin(useGSAP);
 
@@ -71,14 +70,13 @@ const detectBrowserFallbackInfo = () => {
 
 const SystemInfoCard = ({ className = '', style = {} }) => {
   const [sysInfo, setSysInfo] = useState({
-    os: '',
-    cpu: '',
-    cores: '',
-    ram: '',
+    os: 'Detecting...',
+    cpu: 'Detecting...',
+    cores: 'Detecting...',
+    ram: 'Detecting...',
     resolution: `${window.screen.width} x ${window.screen.height}`,
-    gpu: '',
+    gpu: 'Detecting...',
   });
-  const [detecting, setDetecting] = useState(true);
   const [machineCode, setMachineCode] = useState('');
   const [status, setStatus] = useState('ONLINE');
   const cardRef = useRef(null);
@@ -101,8 +99,6 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
       } catch (err) {
         console.warn('Could not call Tauri backend, using browser fallback:', err);
         setSysInfo(detectBrowserFallbackInfo());
-      } finally {
-        setDetecting(false);
       }
     };
 
@@ -131,14 +127,10 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
         '-=0.3'
       );
     }
-
-    gsap.to('.status-led', {
-      opacity: 0.3,
-      duration: 0.6,
-      repeat: -1,
-      yoyo: true,
-      ease: 'sine.inOut'
-    });
+    // NOTE: LED pulse is handled by Tailwind `animate-pulse` on the element
+    // itself. A second infinite GSAP opacity tween here fought the CSS
+    // animation over the same property every frame (visible jitter + wasted
+    // frames), so it was removed.
   }, { scope: cardRef });
 
   return (
@@ -163,15 +155,15 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
       {/* Header section */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {/* Pulsing Status LED */}
+          {/* Pulsing Status LED — Remielle accent */}
           <div
             className="status-led animate-pulse"
             style={{
               width: '10px',
               height: '10px',
               borderRadius: '50%',
-              background: 'var(--led-color)',
-              boxShadow: '0 0 8px var(--led-color)',
+              background: 'var(--remi-accent, #ec5fa2)',
+              boxShadow: '0 0 8px var(--remi-accent, #ec5fa2)',
               transition: 'background-color 0.15s, box-shadow 0.15s',
             }}
           />
@@ -182,8 +174,8 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
         <span style={{
           fontSize: '10px',
           fontWeight: '800',
-          color: 'var(--card-bg)',
-          background: 'var(--card-border)',
+          color: 'var(--remi-chip-text, #ffffff)',
+          background: 'var(--remi-chip-bg, #1f9e95)',
           padding: '3px 8px',
           borderRadius: '6px',
           letterSpacing: '0.5px',
@@ -207,43 +199,43 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
         {/* Machine ID */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Machine Code</span>
-          {detecting ? <Skeleton width="60%" height={13} /> : <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)', fontFamily: 'monospace' }}>{machineCode}</span>}
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)', fontFamily: 'monospace' }}>{machineCode}</span>
         </div>
 
         {/* Operating System */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Operating System</span>
-          {detecting ? <Skeleton width="50%" height={13} /> : <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.os}</span>}
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.os}</span>
         </div>
 
         {/* Processor Name */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: 'span 2' }}>
           <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Processor</span>
-          {detecting ? <Skeleton width="70%" height={13} /> : <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sysInfo.cpu}</span>}
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sysInfo.cpu}</span>
         </div>
 
         {/* CPU Cores count */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Logical Cores</span>
-          {detecting ? <Skeleton width="30%" height={13} /> : <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.cores}</span>}
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.cores}</span>
         </div>
 
         {/* RAM Size */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Total Memory</span>
-          {detecting ? <Skeleton width="25%" height={13} /> : <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.ram}</span>}
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.ram}</span>
         </div>
 
         {/* Display Resolution */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: 'span 2' }}>
           <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Active Resolution</span>
-          {detecting ? <Skeleton width="40%" height={13} /> : <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.resolution}</span>}
+          <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-color)' }}>{sysInfo.resolution}</span>
         </div>
 
         {/* Graphics Engine */}
         <div className="info-row" style={{ display: 'flex', flexDirection: 'column', gap: '2px', gridColumn: 'span 2', borderTop: '1px solid var(--card-border)', opacity: 0.9, paddingTop: '8px', marginTop: '4px' }}>
           <span style={{ fontSize: '9px', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>Graphics Processing Unit</span>
-          {detecting ? <Skeleton width="60%" height={12} /> : <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={sysInfo.gpu}>{sysInfo.gpu}</span>}
+          <span style={{ fontSize: '12px', fontWeight: '800', color: 'var(--text-color)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={sysInfo.gpu}>{sysInfo.gpu}</span>
         </div>
       </div>
 
@@ -256,4 +248,4 @@ const SystemInfoCard = ({ className = '', style = {} }) => {
   );
 };
 
-export default React.memo(SystemInfoCard);
+export default SystemInfoCard;

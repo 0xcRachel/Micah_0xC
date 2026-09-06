@@ -18,68 +18,30 @@
   animation: sm-badge-fade 0.25s ease;
 }
 
+/* Remielle spinner — pink track, teal arc in light mode.
+   Size comes from utility classes or inline style (w-3 h-3, 14px, …). */
+.remi-spinner {
+  display: inline-block;
+  border-radius: 50%;
+  border: 2px solid var(--remi-track, #f3c6da);
+  border-top-color: var(--remi-arc, #1f9e95);
+  animation: remi-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes remi-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .remi-spinner {
+    animation-duration: 2s;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sm-badge-fade {
     animation: none;
-  }
-}
-
-/* SyncDot pulse animation */
-@keyframes sync-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 179, 60, 0.4); }
-  50% { box-shadow: 0 0 0 5px rgba(224, 179, 60, 0); }
-}
-@keyframes sync-error-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(224, 85, 85, 0.4); }
-  50% { box-shadow: 0 0 0 5px rgba(224, 85, 85, 0); }
-}
-
-.sync-dot-syncing { animation: sync-pulse 1.2s ease-in-out infinite; }
-.sync-dot-error { animation: sync-error-pulse 1.2s ease-in-out infinite; }
-
-@media (prefers-reduced-motion: reduce) {
-  .sync-dot-syncing,
-  .sync-dot-error {
-    animation: none;
-  }
-}
-
-/* Skeleton shimmer loading */
-@keyframes skeleton-shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-.skeleton-shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--card-bg-alt, #f0eee6) 25%,
-    var(--card-bg, #faf9f6) 50%,
-    var(--card-bg-alt, #f0eee6) 75%
-  );
-  background-size: 200% 100%;
-  animation: skeleton-shimmer 1.5s ease-in-out infinite;
-}
-
-.dark-mode .skeleton-shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--card-bg-alt, #323230) 25%,
-    var(--card-bg, #262624) 50%,
-    var(--card-bg-alt, #323230) 75%
-  );
-  background-size: 200% 100%;
-}
-
-.skeleton-static {
-  animation: none;
-  background: var(--card-bg-alt, #f0eee6);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .skeleton-shimmer {
-    animation: none;
-    background: var(--card-bg-alt, #f0eee6);
   }
 }
 
@@ -99,24 +61,63 @@
   --led-color: #5f8370;
   --led-btn: #5f8370;
   --on-led: #ffffff;
+  /* Remielle Dan (ZZZ) accents — light mode only */
+  --remi-track: #f3c6da;
+  --remi-arc: #1f9e95;
+  --remi-accent: #ec5fa2;
+  --remi-chip-bg: #1f9e95;
+  --remi-chip-text: #ffffff;
+  /* Intro curtain — light set (settles on dark plum so cream text reads) */
+  --intro-1: #fdf8fa;
+  --intro-2: #f3c6da;
+  --intro-3: #ec5fa2;
+  --intro-4: #1f9e95;
+  --intro-5: #4a2b3a;
+  --intro-text: #fff7e5;
+  --intro-sub: #eec3d6;
+  /* Character swoosh bands — light set */
+  --char-dome: #e9e0d2;
+  --char-band-1: #e8b64c;
+  --char-band-2: #ec5fa2;
+  --char-band-3: #1f9e95;
 }
 
 .dark-mode {
-  --bg-color: #161615;
-  --bg-grid: #1a1a19;
-  --grid-line: #2e2e2c;
-  --text-color: #faf9f6;
-  --text-muted: #a5a49c;
-  --card-bg: #262624;
-  --card-bg-alt: #323230;
-  --card-border: #4d4d4a;
+  /* Remielle Dan theme: black outfit + pink hair */
+  --bg-color: #161215;
+  --bg-grid: #1a1518;
+  --grid-line: #322a30;
+  --text-color: #fdf8fa;
+  --text-muted: #b09aa8;
+  --card-bg: #221c20;
+  --card-bg-alt: #2e252b;
+  --card-border: #54434d;
   --card-shadow: #000000;
-  --shadow-opacity: 0.35;
-  --tag-bg: #323230;
-  --button-hover-bg: #3d3d3a;
-  --led-color: #00ff66;
-  --led-btn: #1f6f4a;
-  --on-led: #161615;
+  --shadow-opacity: 0.4;
+  --tag-bg: #2e252b;
+  --button-hover-bg: #46333e;
+  --led-color: #ff5fa8;
+  --led-btn: #a8346b;
+  --on-led: #fff0f6;
+  /* Remielle accents for dark mode */
+  --remi-track: #4a2f3d;
+  --remi-arc: #ff5fa8;
+  --remi-accent: #ff5fa8;
+  --remi-chip-bg: #a8346b;
+  --remi-chip-text: #fff0f6;
+  /* Intro curtain — dark set (black outfit + pink/teal/gold) */
+  --intro-1: #241b22;
+  --intro-2: #a8346b;
+  --intro-3: #ff5fa8;
+  --intro-4: #1f9e95;
+  --intro-5: #100d10;
+  --intro-text: #fff7e5;
+  --intro-sub: #d694b8;
+  /* Character swoosh bands — dark set (mirrors the reference art) */
+  --char-dome: #241b22;
+  --char-band-1: #f2d13d;
+  --char-band-2: #c9b896;
+  --char-band-3: #0e0c0e;
 }
 
 html, body {

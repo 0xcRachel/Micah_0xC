@@ -34,6 +34,7 @@ const ForceUpdate = ({ versionInfo, isOptional, onSkip }) => {
   const notesRef = useRef(null);
   const actionsRef = useRef(null);
   const pulseRef = useRef(null);
+  const pulseTweenRef = useRef(null);
   const progressRef = useRef(null);
   const progressTextRef = useRef(null);
 
@@ -124,25 +125,45 @@ const ForceUpdate = ({ versionInfo, isOptional, onSkip }) => {
       '-=0.2',
     );
 
-    // 7. Start pulsing the download button
-    tl.add(() => {
-      if (pulseRef.current) {
-        gsap.to(pulseRef.current, {
-          boxShadow: '0 0 30px rgba(224, 85, 85, 0.45), 0 10px 0 #1b1b1a, 0 20px 40px rgba(0,0,0,0.12)',
-          duration: 1.2,
-          repeat: -1,
-          yoyo: true,
-          ease: 'sine.inOut',
-        });
-      }
-    }, '-=0.1');
   }, { scope: containerRef });
+
+  // Attention pulse on the primary button — transform/opacity ONLY.
+  // (The old box-shadow tween repainted the whole card every frame.)
+  // Lifecycle-bound to `phase` so no orphan tween survives a phase change.
+  const startPulse = () => {
+    pulseTweenRef.current?.kill();
+    pulseTweenRef.current = null;
+    if (pulseRef.current) {
+      pulseTweenRef.current = gsap.to(pulseRef.current, {
+        scale: 1.045,
+        duration: 0.9,
+        repeat: -1,
+        yoyo: true,
+        ease: 'sine.inOut',
+      });
+    }
+  };
+
+  useEffect(() => {
+    // `error` in deps: after a failed download the phase stays 'idle', so
+    // only the error change re-runs this effect once the button re-mounts.
+    if (phase === 'idle' || phase === 'ready') startPulse();
+    return () => {
+      pulseTweenRef.current?.kill();
+      pulseTweenRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, error]);
 
   const handleDownload = async () => {
     if (phase !== 'idle') return;
     setPhase('downloading');
     setProgress(0);
     setError(null);
+
+    // Stop the pulse so it never fights the press tween over `scale`.
+    pulseTweenRef.current?.kill();
+    pulseTweenRef.current = null;
 
     // Animate button press
     if (pulseRef.current) {
@@ -169,6 +190,8 @@ const ForceUpdate = ({ versionInfo, isOptional, onSkip }) => {
       }
       setError(err?.toString?.() || 'Update failed. Please try again.');
       setPhase('idle');
+      // NOTE: phase stays 'idle', but the setError above re-runs the pulse
+      // effect (see deps) after the button re-mounts.
     }
   };
 

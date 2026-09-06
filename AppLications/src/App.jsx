@@ -7,16 +7,15 @@ import IntroOverlay from './components/IntroOverlay';
 import Background from './components/Background';
 import Character from './components/Character';
 import ForceUpdate from './components/ForceUpdate';
+import SettingsPage from './pages/SettingsPage';
+import LikePage from './pages/LikePage';
 import ProfileCard from './components/ProfileCard';
 import SearchGame from './components/SearchGame';
 import SystemInfoCard from './components/SystemInfoCard';
 import ImagePreviewModal from './components/ImagePreviewModal';
+import SteamManager from './components/SteamManager';
 import AuthBadge from './components/AuthBadge';
-import Spinner from './components/Spinner';
-
-const SettingsPage = React.lazy(() => import('./pages/SettingsPage'));
-const LikePage = React.lazy(() => import('./pages/LikePage'));
-const SteamManager = React.lazy(() => import('./components/SteamManager'));
+import VersionBadge from './components/VersionBadge';
 import { SyncProvider, useSync } from './sync/SyncProvider';
 
 import charLight from '../../assets/img/char.png';
@@ -129,16 +128,17 @@ const App = () => {
     }
   }, [isDarkMode]);
 
+  // Perf: hide home content with visibility (compositor-cheap) instead of a
+  // full-screen blur filter while the intro curtain covers the screen.
+  // A blur forces a repaint of the entire page every frame in WebView2.
   useGSAP(() => {
-    if (animationsEnabled) {
-      gsap.set(contentRef.current, { filter: 'blur(16px)' });
-    } else {
-      gsap.set(contentRef.current, { filter: 'blur(0px)' });
-    }
-  }, { scope: containerRef, dependencies: [animationsEnabled] });
+    // Only hide while the intro curtain is actually going to play; otherwise
+    // toggling the setting mid-session could leave content invisible forever.
+    gsap.set(contentRef.current, { autoAlpha: (animationsEnabled && introActive) ? 0 : 1 });
+  }, { scope: containerRef, dependencies: [animationsEnabled, introActive] });
 
   const handleCovered = () => {
-    gsap.set(contentRef.current, { filter: 'blur(0px)' });
+    gsap.to(contentRef.current, { autoAlpha: 1, duration: 0.35, ease: 'power2.out' });
   };
 
   const navigateTo = (page) => {
@@ -185,7 +185,7 @@ const App = () => {
     }
 
     // Determine target color based on transition
-    const targetBgColor = nextVal ? '#161615' : '#f8f6f0';
+    const targetBgColor = nextVal ? '#161215' : '#f8f6f0';
 
     // 2. Position the transition circle and make it visible
     gsap.set(transitionCircleRef.current, {
@@ -216,11 +216,13 @@ const App = () => {
       ease: 'power2.in',
     });
 
-    // Swapping phase: swap theme classes & state behind the solid screen cover
+    // Swapping phase: swap theme classes & state behind the solid screen cover.
+    // NOTE: updateAppSettings (SyncProvider write → whole-tree re-render) is
+    // deliberately deferred to the cleanup phase so React reconciliation
+    // never runs while the circle is scaling (dropped frames).
     tl.add(() => {
       setIsDarkMode(nextVal);
       localStorage.setItem('setting_darkMode', String(nextVal));
-      updateAppSettings({ theme: nextVal ? 'dark' : 'light' });
     });
 
     // Reveal phase: smoothly fade the overlay out
@@ -230,9 +232,11 @@ const App = () => {
       ease: 'power2.out',
     });
 
-    // Clean up phase: hide transition element
+    // Clean up phase: hide transition element, then sync theme to cloud
+    // (off the animation critical path).
     tl.add(() => {
       gsap.set(transitionCircleRef.current, { display: 'none' });
+      updateAppSettings({ theme: nextVal ? 'dark' : 'light' });
     });
   });
 
@@ -258,11 +262,21 @@ const App = () => {
         gap: 16,
         background: 'var(--bg-color, #f8f6f0)',
       }}>
-        <Spinner size={36} />
+        <span style={{
+          width: 36,
+          height: 36,
+          border: '3px solid var(--remi-track, #f3c6da)',
+          borderTopColor: 'var(--remi-arc, #1f9e95)',
+          borderRadius: '50%',
+          animation: 'fu-spin 0.7s linear infinite',
+        }} />
         <p style={{ fontSize: 13, color: 'var(--text-muted, #87867f)', margin: 0 }}>
           Checking for updates…
         </p>
-        <AuthBadge />
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <VersionBadge />
+          <AuthBadge />
+        </div>
       </div>
     );
   }
@@ -284,7 +298,12 @@ const App = () => {
       )}
       <Background />
 
-      {!introActive && <AuthBadge />}
+      {!introActive && (
+        <div className="fixed top-4 right-4 z-50 flex items-center gap-2">
+          <VersionBadge />
+          <AuthBadge />
+        </div>
+      )}
 
       {/* Circle Transition Overlay */}
       <div
@@ -339,23 +358,21 @@ const App = () => {
       </div>
 
       {/* Full-screen pages — mount only when active, unmount after exit animation */}
-      <React.Suspense fallback={<Spinner size={24} />}>
-        {currentPage === 'settings' && (
-          <SettingsPage
-            onBack={handleBack}
-            isDarkMode={isDarkMode}
-            onToggleDarkMode={handleToggleDarkMode}
-            animationsEnabled={animationsEnabled}
-            onToggleAnimations={handleToggleAnimations}
-          />
-        )}
-        {currentPage === 'like' && (
-          <LikePage onBack={handleBack} />
-        )}
-        {currentPage === 'steam' && (
-          <SteamManager onBack={handleBack} />
-        )}
-      </React.Suspense>
+      {currentPage === 'settings' && (
+        <SettingsPage
+          onBack={handleBack}
+          isDarkMode={isDarkMode}
+          onToggleDarkMode={handleToggleDarkMode}
+          animationsEnabled={animationsEnabled}
+          onToggleAnimations={handleToggleAnimations}
+        />
+      )}
+      {currentPage === 'like' && (
+        <LikePage onBack={handleBack} />
+      )}
+      {currentPage === 'steam' && (
+        <SteamManager onBack={handleBack} />
+      )}
 
       {/* Image Preview Modal (Lightbox) */}
       {showPreview && selectedGame && (

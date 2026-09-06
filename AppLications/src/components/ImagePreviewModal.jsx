@@ -3,7 +3,6 @@ import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { invoke } from '@tauri-apps/api/core';
 import { Toast, useToast } from './Toast';
-import Spinner from './Spinner';
 
 gsap.registerPlugin(useGSAP);
 
@@ -529,7 +528,7 @@ const ImagePreviewModal = ({ game, onClose }) => {
 
             {manifestStatus === 'checking' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0' }}>
-                <Spinner size={12} />
+                <span className="sm-spinner" style={{ width: '12px', height: '12px' }} />
                 <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--text-muted)' }}>Checking...</span>
               </div>
             )}

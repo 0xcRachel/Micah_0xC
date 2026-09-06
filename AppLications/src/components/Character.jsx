@@ -150,7 +150,7 @@ const Character = ({
         preserveAspectRatio="none"
         style={{ zIndex: 1 }}
       >
-        <path d="M 0,100 C 56 93 30 10 100 10 L 100 100 Z" fill="#30302e" />
+        <path d="M 0,100 C 56 93 30 10 100 10 L 100 100 Z" style={{ fill: 'var(--char-dome)' }} />
       </svg>
 
       {/* Sphere container (z:2) — same stacking context as character,
@@ -245,7 +245,7 @@ const Character = ({
         preserveAspectRatio="none"
         style={{ zIndex: 4 }}
       >
-        <path d="M 0,100 Q 55,96 100,46 L 100,100 Z" fill="#f4f466ff" />
+        <path d="M 0,100 Q 55,96 100,46 L 100,100 Z" style={{ fill: 'var(--char-band-1)' }} />
       </svg>
 
       {/* Block 3 (z:5) */}
@@ -255,7 +255,7 @@ const Character = ({
         preserveAspectRatio="none"
         style={{ zIndex: 5 }}
       >
-        <path d="M 0,100 Q 55,100 100,50 L 100,100 Z" fill="#c4b99a" />
+        <path d="M 0,100 Q 55,100 100,50 L 100,100 Z" style={{ fill: 'var(--char-band-2)' }} />
       </svg>
 
       {/* Block 4 (z:6) */}
@@ -265,10 +265,10 @@ const Character = ({
         preserveAspectRatio="none"
         style={{ zIndex: 6 }}
       >
-        <path d="M 0,100 Q 60,100 100,75 L 100,100 Z" fill="#30302e" />
+        <path d="M 0,100 Q 60,100 100,75 L 100,100 Z" style={{ fill: 'var(--char-band-3)' }} />
       </svg>
     </div>
   );
 };
 
-export default React.memo(Character);
+export default Character;
