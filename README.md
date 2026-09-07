@@ -1,8 +1,8 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="src-tauri/icons/icon.png">
-    <img src="AppLications/src-tauri/icons/icon.png" width="220" alt="">
+    <source media="(prefers-color-scheme: dark)" srcset="./Applications/src-tauri/icons/icon.png">
+    <img src="./Applications/src-tauri/icons/icon.png" width="220" alt="Application Icon">
   </picture>
 </p>
 
