@@ -1,9 +1,6 @@
 
 <p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="./Applications/src-tauri/icons/icon.png">
-    <img src="./Applications/src-tauri/icons/icon.png" width="220" alt="Application Icon">
-  </picture>
+  <img src="./Applications/src-tauri/icons/icon.png" width="220" alt="Application Icon">
 </p>
 
 <h1 align="center">Micah 0xC</h1>
