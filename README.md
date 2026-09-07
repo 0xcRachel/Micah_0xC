@@ -2,7 +2,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="src-tauri/icons/icon.png">
-    <img src="/AppLications/src-tauri/icons/icon.png" width="220" alt="">
+    <img src="AppLications/src-tauri/icons/icon.png" width="220" alt="">
   </picture>
 </p>
 
