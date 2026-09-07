@@ -1,6 +1,6 @@
 
 <p align="center">
-  <img src="./Applications/src-tauri/icons/icon.png" width="220" alt="Application Icon">
+  <img src="./assets/icon.png" width="220" alt="Application Icon">
 </p>
 
 <h1 align="center">Micah 0xC</h1>
