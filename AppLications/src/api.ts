@@ -250,6 +250,36 @@ export const refreshManifestGids = (
     steamDir: opts?.steamDir ?? null,
   });
 
+/**
+ * Save pasted manifest request codes (`depot: code` lines, one per line)
+ * for the DLL to prefer over every provider. Returns the merged pair count.
+ * Codes expire in ~5 minutes — paste fresh ones and download immediately.
+ */
+export const saveManifestCodeOverrides = (
+  text: string,
+  opts?: { steamDir?: string },
+): Promise<number> =>
+  invoke<number>('save_manifest_code_overrides', {
+    text,
+    steamDir: opts?.steamDir ?? null,
+  });
+
+/** Current code overrides file content (pretty JSON, `"{}"` when absent) */
+export const readManifestCodeOverrides = (
+  opts?: { steamDir?: string },
+): Promise<string> =>
+  invoke<string>('read_manifest_code_overrides', {
+    steamDir: opts?.steamDir ?? null,
+  });
+
+/** Delete the overrides file (stops using pasted codes) */
+export const clearManifestCodeOverrides = (
+  opts?: { steamDir?: string },
+): Promise<void> =>
+  invoke<void>('clear_manifest_code_overrides', {
+    steamDir: opts?.steamDir ?? null,
+  });
+
 /** Create or update a game entry (writes the .lua file) */
 export const upsertGame = (steamDir: string, game: GameConfig): Promise<void> =>
   invoke<void>('upsert_game', { steamDir, game });
@@ -387,3 +417,32 @@ export const getWindowRemember = (): Promise<boolean> =>
 /** Toggle window size/position persistence */
 export const setWindowRemember = (remember: boolean): Promise<void> =>
   invoke<void>('set_window_remember', { remember });
+
+// ==================== INSTALL HEALTH ====================
+
+export interface GameHealth {
+  appid: number;
+  name: string;
+  stateFlags: number;
+  installDir: string;
+  dirExists: boolean;
+  bytesOnDisk: number;
+  fileCount: number;
+  hasExe: boolean;
+  acfSizeOnDisk: number;
+  buildId: string;
+  luaManaged: boolean;
+  health: string;
+  canAutoClean: boolean;
+}
+
+/** Quet appmanifest: co cai dat Steam vs byte that tren dia (phat hien ghost) */
+export const scanInstallHealth = (steamDir: string): Promise<GameHealth[]> =>
+  invoke<GameHealth[]>('scan_install_health', { steamDir });
+
+/** Don 1 ghost: backup .acf, xoa thu muc rong + co cai dat. force cho game khong do Lua quan ly */
+export const cleanGhost = (steamDir: string, appid: number, force: boolean): Promise<string> =>
+  invoke<string>('clean_ghost', { steamDir, appid, force });
+/** Mo Steam install flow cho game (1-click cai: owned/free/family chay full toc do) */
+export const triggerSteamInstall = (appid: number): Promise<void> =>
+  invoke<void>('trigger_steam_install', { appid });
