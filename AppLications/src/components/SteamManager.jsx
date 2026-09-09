@@ -686,6 +686,7 @@ const HEALTH_LABEL = {
   unmanaged_empty: 'Ghost l? (0 byte)',
   partial: 'Thi?u file',
   not_installed: 'Chưa cài',
+  leftover_empty: 'Thừa mục rỗng',
 };
 
 const fmtBytes = (n) => {
@@ -749,7 +750,10 @@ const TabHealth = ({ steamDir, show }) => {
             {visible.map(r => (
               <tr key={r.appid}>
                 <td>{r.name} <span style={{ color: 'var(--text-muted)' }}>({r.appid})</span></td>
-                <td>{HEALTH_LABEL[r.health] || r.health}</td>
+                <td>{HEALTH_LABEL[r.health] || r.health}
+                  {r.ownershipDenied && (<span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)' }}>Steam từ chối: chưa sở hữu</span>)}
+                  {r.manifest401s > 0 && (<span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)' }}>401 ×{r.manifest401s}</span>)}
+                </td>
                 <td>{fmtBytes(r.bytesOnDisk)}</td>
                 <td>
                   {r.canAutoClean && (

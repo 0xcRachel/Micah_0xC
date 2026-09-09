@@ -434,6 +434,8 @@ export interface GameHealth {
   luaManaged: boolean;
   health: string;
   canAutoClean: boolean;
+  ownershipDenied: boolean;
+  manifest401s: number;
 }
 
 /** Quet appmanifest: co cai dat Steam vs byte that tren dia (phat hien ghost) */
