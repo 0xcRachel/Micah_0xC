@@ -446,3 +446,19 @@ export const cleanGhost = (steamDir: string, appid: number, force: boolean): Pro
 /** Mo Steam install flow cho game (1-click cai: owned/free/family chay full toc do) */
 export const triggerSteamInstall = (appid: number): Promise<void> =>
   invoke<void>('trigger_steam_install', { appid });
+export interface SdkReport {
+  appid: number;
+  installPath: string;
+  sdk: string;
+  arch: string;
+  steamApi: boolean;
+  eos: boolean;
+  goldberg: boolean;
+  anticheat: string[];
+  unlockable: string;
+  note: string;
+}
+
+/** Phat hien SDK/bao ve cua game da cai (nen tang unlock manager) */
+export const detectGameSdk = (steamDir: string, appid: number): Promise<SdkReport> =>
+  invoke<SdkReport>('detect_game_sdk', { steamDir, appid });

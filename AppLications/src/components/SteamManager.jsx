@@ -39,7 +39,7 @@ const useToast = () => {
 const toastError = (show, prefix, err, ms = 6000) => {
   let msg = String(err?.message ?? err ?? 'Unknown error').trim();
   msg = msg.split('\n')[0];
-  if (msg.length > 140) msg = `${msg.slice(0, 137)}â€¦`;
+  if (msg.length > 140) msg = `${msg.slice(0, 137)}Ã¢â‚¬Â¦`;
   show(prefix ? `${prefix}: ${msg}` : msg, 'error', ms);
 };
 
@@ -64,9 +64,9 @@ const loadStateLabel = (ls) => ({
 
 const TabStatus = ({ steamDir, scanData, onRefresh, loading }) => {
   if (!steamDir) return <p className="sm-empty">Select a Steam directory first.</p>;
-  // Only block the whole view on the very first scan â€” during a re-scan we
+  // Only block the whole view on the very first scan Ã¢â‚¬â€ during a re-scan we
   // keep the previous data on screen and show a subtle hint instead.
-  if (!scanData && loading) return <p className="sm-empty"><Spinner /> Scanningâ€¦</p>;
+  if (!scanData && loading) return <p className="sm-empty"><Spinner /> ScanningÃ¢â‚¬Â¦</p>;
   if (!scanData) return (
     <p className="sm-empty">
       <button className="sm-btn primary" onClick={onRefresh}>Scan Now</button>
@@ -76,7 +76,7 @@ const TabStatus = ({ steamDir, scanData, onRefresh, loading }) => {
   const s = scanData;
   return (
     <>
-      {loading && <p className="sm-scanning-hint"><Spinner /> Scanningâ€¦</p>}
+      {loading && <p className="sm-scanning-hint"><Spinner /> ScanningÃ¢â‚¬Â¦</p>}
       <div className="sm-status-grid">
         <div className="sm-status-card">
           <span className="sm-status-card-label">Steam Running</span>
@@ -86,7 +86,7 @@ const TabStatus = ({ steamDir, scanData, onRefresh, loading }) => {
         </div>
         <div className="sm-status-card">
           <span className="sm-status-card-label">Version</span>
-          <span className="sm-status-card-value">{s.steam_version ?? 'â€”'}</span>
+          <span className="sm-status-card-value">{s.steam_version ?? 'Ã¢â‚¬â€'}</span>
         </div>
         <div className="sm-status-card">
           <span className="sm-status-card-label">Config File</span>
@@ -219,7 +219,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
   const [codesBusy, setCodesBusy] = useState(false);
   const [selected, setSelected] = useState(() => new Set());
 
-  // Manifest request codes pasted by the user (expire in ~5 min â€” paste
+  // Manifest request codes pasted by the user (expire in ~5 min Ã¢â‚¬â€ paste
   // fresh ones and download immediately). DLL prefers these over providers.
   const openCodesPanel = async () => {
     setCodesOpen(true);
@@ -237,7 +237,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
     setCodesBusy(true);
     try {
       const n = await api.saveManifestCodeOverrides(codesText, { steamDir });
-      show(`Saved ${n} manifest code(s) â€” download in Steam NOW, they expire in ~5 minutes`, 'success');
+      show(`Saved ${n} manifest code(s) Ã¢â‚¬â€ download in Steam NOW, they expire in ~5 minutes`, 'success');
     } catch (e) { toastError(show, 'Save codes', e); }
     finally { setCodesBusy(false); }
   };
@@ -262,7 +262,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
       const res = await api.refreshManifestGids(g.appid, { steamDir });
       if (res.updated.length) {
         const depots = res.updated.map(u => `#${u.depot_id}`).join(', ');
-        show(`Manifests updated for ${g.name} (${depots}) â€” re-download in Steam to apply`, 'success');
+        show(`Manifests updated for ${g.name} (${depots}) Ã¢â‚¬â€ re-download in Steam to apply`, 'success');
       } else {
         show(`Manifests already current for ${g.name}`, 'success');
       }
@@ -291,7 +291,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
     setRefreshingManifests(null);
     setSelected(new Set());
     if (updatedGames) {
-      show(`Manifests updated for ${updatedGames} game(s), ${updatedDepots} depot(s) â€” re-download in Steam to apply`, 'success');
+      show(`Manifests updated for ${updatedGames} game(s), ${updatedDepots} depot(s) Ã¢â‚¬â€ re-download in Steam to apply`, 'success');
     } else if (!failed.length) {
       show('All selected manifests already current', 'success');
     }
@@ -362,7 +362,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
   );
 
   // Cloud snapshots may store placeholder names ("App {appid}") from before
-  // name resolution existed â€” hydrate them via the name cache / Steam Store.
+  // name resolution existed Ã¢â‚¬â€ hydrate them via the name cache / Steam Store.
   const placeholderCloudIds = useMemo(
     () =>
       missingCloudGames
@@ -413,7 +413,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
       {isDiscord && missingCloudGames.length > 0 && (
         <div className="sm-update-card" style={{ borderColor: 'var(--led-btn)' }}>
           <p style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700, color: 'var(--text-color)' }}>
-            Cloud snapshot â€” {missingCloudGames.length} game(s) missing on this PC:
+            Cloud snapshot Ã¢â‚¬â€ {missingCloudGames.length} game(s) missing on this PC:
           </p>
           <div className="sm-game-list">
             {missingCloudGames.map(cg => (
@@ -505,7 +505,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
       {codesOpen && (
         <div className="sm-codes-panel" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '10px 12px', marginBottom: 10, borderRadius: 10, border: '1px solid var(--card-border)', background: 'var(--card-bg-alt)' }}>
           <p style={{ margin: 0, fontSize: 12, color: 'var(--text-muted)' }}>
-            Paste fresh manifest codes (one <code>depot: code</code> per line). The DLL prefers these over every provider â€” but they expire in ~5 minutes, so download in Steam immediately after saving.
+            Paste fresh manifest codes (one <code>depot: code</code> per line). The DLL prefers these over every provider Ã¢â‚¬â€ but they expire in ~5 minutes, so download in Steam immediately after saving.
           </p>
           <textarea
             value={codesText}
@@ -570,18 +570,32 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
                       {refreshingManifests === String(g.appid) ? <Spinner /> : null} Manifests
                     </button>
                     <button
+                      className="sm-btn"
+                      style={{ padding: '6px 10px', fontSize: 12 }}
+                      disabled={gamesLoading}
+                      onClick={async () => {
+                        try {
+                          const r = await api.detectGameSdk(steamDir, g.appid);
+                          show(g.name + ': ' + r.sdk + '/' + r.arch + ' — unlock: ' + r.unlockable + '. ' + r.note, 'success', 8000);
+                        } catch (e) { toastError(show, 'SDK check', e); }
+                      }}
+                      title="Phat hien SDK/bao ve (nen unlock manager)"
+                    >
+                      SDK
+                    </button>
+                    <button
                       className="sm-btn primary"
                       style={{ padding: '6px 10px', fontSize: 12 }}
                       disabled={gamesLoading}
                       onClick={async () => {
                         try {
                           await api.triggerSteamInstall(g.appid);
-                          show('Da mo Steam install — theo doi trong Steam + tab Suc khoe', 'success', 6000);
+                          show('Da mo Steam install â€” theo doi trong Steam + tab Suc khoe', 'success', 6000);
                         } catch (e) { toastError(show, 'Install', e); }
                       }}
                       title="Steam install flow"
                     >
-                      Cài
+                      CÃ i
                     </button>
                     <button
                       className="sm-btn danger"
@@ -619,7 +633,7 @@ const TabLogs = ({ steamDir, show }) => {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  if (loading) return <p className="sm-empty"><Spinner /> Loading logsâ€¦</p>;
+  if (loading) return <p className="sm-empty"><Spinner /> Loading logsÃ¢â‚¬Â¦</p>;
   if (!logs.length) return (
     <div>
       <div className="sm-action-row">
@@ -646,11 +660,11 @@ const TabLogs = ({ steamDir, show }) => {
       </div>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8, fontSize: 12, color: 'var(--text-muted)' }}>
         <span>{current.line_count} lines</span>
-        <span>Â·</span>
+        <span>Ã‚Â·</span>
         <span>{(current.size_bytes / 1024).toFixed(1)} KB</span>
         {current.modified_time && (
           <>
-            <span>Â·</span>
+            <span>Ã‚Â·</span>
             <span>{new Date(current.modified_time * 1000).toLocaleString()}</span>
           </>
         )}
@@ -671,7 +685,7 @@ const HEALTH_LABEL = {
   unmanaged_ghost: 'Ghost l? (m?t thu m?c)',
   unmanaged_empty: 'Ghost l? (0 byte)',
   partial: 'Thi?u file',
-  not_installed: 'Chua cài',
+  not_installed: 'Chua cÃ i',
 };
 
 const fmtBytes = (n) => {
@@ -709,7 +723,7 @@ const TabHealth = ({ steamDir, show }) => {
   };
 
   if (!steamDir) return <p className="sm-empty">Select a Steam directory first.</p>;
-  if (loading) return <p className="sm-empty"><Spinner /> Dang quét.</p>;
+  if (loading) return <p className="sm-empty"><Spinner /> Dang quÃ©t.</p>;
 
   const ghosts = rows.filter(r => r.health !== 'healthy' && r.health !== 'not_installed');
   const visible = showUnmanaged
@@ -722,15 +736,15 @@ const TabHealth = ({ steamDir, show }) => {
         <button className="sm-btn" onClick={refresh}>Refresh</button>
         <label style={{ fontSize: 12, color: 'var(--text-muted)' }}>
           <input type="checkbox" checked={showUnmanaged} onChange={e => setShowUnmanaged(e.target.checked)} />
-          {' '}Hi?n game không do Lua qu?n lý
+          {' '}Hi?n game khÃ´ng do Lua qu?n lÃ½
         </label>
         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
           {ghosts.length} v?n d? / {rows.length} manifest
         </span>
       </div>
-      {!visible.length ? <p className="sm-empty">Không có manifest nào.</p> : (
+      {!visible.length ? <p className="sm-empty">KhÃ´ng cÃ³ manifest nÃ o.</p> : (
         <table className="sm-dll-table">
-          <thead><tr><th>Game</th><th>Tr?ng thái</th><th>Dia th?t</th><th></th></tr></thead>
+          <thead><tr><th>Game</th><th>Tr?ng thÃ¡i</th><th>Dia th?t</th><th></th></tr></thead>
           <tbody>
             {visible.map(r => (
               <tr key={r.appid}>
@@ -746,8 +760,8 @@ const TabHealth = ({ steamDir, show }) => {
                   )}
                   {!r.canAutoClean && (r.health === 'unmanaged_ghost' || r.health === 'unmanaged_empty') && showUnmanaged && (
                     <button className="sm-btn" disabled={cleaning === r.appid}
-                      title="Game này không do Lua qu?n lý - ch? d?n khi b?n ch?c ch?n"
-                      onClick={() => { if (window.confirm(`D?n ghost ${r.name} (${r.appid})? Steam s? hi?n "chua cài" trung th?c.`)) clean(r.appid, true); }}>
+                      title="Game nÃ y khÃ´ng do Lua qu?n lÃ½ - ch? d?n khi b?n ch?c ch?n"
+                      onClick={() => { if (window.confirm(`D?n ghost ${r.name} (${r.appid})? Steam s? hi?n "chua cÃ i" trung th?c.`)) clean(r.appid, true); }}>
                       {cleaning === r.appid ? '.' : 'D?n (force)'}
                     </button>
                   )}
@@ -758,7 +772,7 @@ const TabHealth = ({ steamDir, show }) => {
         </table>
       )}
       <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-        Ghost = Steam g?n c? "dã cài" nhung 0 byte trên dia (download 401 tru?c dây). D?n = backup .acf r?i xóa c?, Steam hi?n "chua cài" trung th?c.
+        Ghost = Steam g?n c? "dÃ£ cÃ i" nhung 0 byte trÃªn dia (download 401 tru?c dÃ¢y). D?n = backup .acf r?i xÃ³a c?, Steam hi?n "chua cÃ i" trung th?c.
       </p>
     </div>
   );
@@ -858,8 +872,8 @@ const TabSettings = ({ steamDir, show }) => {
 };
 
 // ==================== TAB CONTENT WRAPPER ====================
-// Mounts fresh on every tab switch â€” GSAP fires cleanly each time.
-// Light fade+slide only (no scale â€” avoids blurry text and layout cost).
+// Mounts fresh on every tab switch Ã¢â‚¬â€ GSAP fires cleanly each time.
+// Light fade+slide only (no scale Ã¢â‚¬â€ avoids blurry text and layout cost).
 const TabContent = ({ children }) => {
   const wrapRef = useRef(null);
   useGSAP(() => {
@@ -916,7 +930,7 @@ const SteamManager = ({ onBack }) => {
     finally { setGamesLoading(false); }
   }, [steamDir, show, updateGames]);
 
-  // Enter animation â€” refs used directly so no stale selectors.
+  // Enter animation Ã¢â‚¬â€ refs used directly so no stale selectors.
   // Blur is applied statically (GPU-cheap); only opacity fades.
   useGSAP(() => {
     if (prefersReducedMotion()) return;
@@ -929,13 +943,13 @@ const SteamManager = ({ onBack }) => {
       { opacity: 0 },
       { opacity: 1, duration: 0.4, ease: 'power2.out' }
     );
-    // Panel rise with a subtle settle â€” softer scale keeps text crisp.
+    // Panel rise with a subtle settle Ã¢â‚¬â€ softer scale keeps text crisp.
     tl.fromTo(panelRef.current,
       { y: 56, scale: 0.98, opacity: 0 },
       { y: 0, scale: 1, opacity: 1, duration: 0.55, ease: 'back.out(1.08)' },
       '-=0.3'
     );
-    // Header â†’ dir row â†’ tabs stagger (all via refs)
+    // Header Ã¢â€ â€™ dir row Ã¢â€ â€™ tabs stagger (all via refs)
     tl.fromTo(
       [headerRef.current, dirRowRef.current, tabsRowRef.current],
       { y: -10, opacity: 0 },
@@ -988,7 +1002,7 @@ const SteamManager = ({ onBack }) => {
     }
   }, [steamDir, handleScan, refreshGames]);
 
-  // Silent background refresh of the scan â€” DLL/Status data stays fresh
+  // Silent background refresh of the scan Ã¢â‚¬â€ DLL/Status data stays fresh
   // without blocking the UI or flashing the spinner.
   useEffect(() => {
     if (!steamDir) return;
@@ -1024,7 +1038,7 @@ const SteamManager = ({ onBack }) => {
               className="sm-dir-input"
               value={steamDir}
               onChange={e => setSteamDir(e.target.value)}
-              placeholder="Steam directory pathâ€¦"
+              placeholder="Steam directory pathÃ¢â‚¬Â¦"
             />
             <button id="sm-browse-btn" className="sm-btn" onClick={handleBrowse}>Browse</button>
             <button id="sm-scan-btn" className="sm-btn primary"
@@ -1045,7 +1059,7 @@ const SteamManager = ({ onBack }) => {
           ))}
         </div>
 
-        {/* Body â€” key={tab} forces TabContent to unmount+remount on every switch */}
+        {/* Body Ã¢â‚¬â€ key={tab} forces TabContent to unmount+remount on every switch */}
         <div className="sm-body">
           <TabContent key={tab}>
             {tab === 'status' && (
