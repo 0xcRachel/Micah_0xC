@@ -213,7 +213,54 @@ const TabDll = ({ steamDir, scanData, onRefresh, show }) => {
 const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
   const { isDiscord, syncState } = useSync();
   const [restoring, setRestoring] = useState(null);
+  const [refreshingManifests, setRefreshingManifests] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
+
+  // Refresh pinned manifest gids from steamcmd.net. Stale gids make Steam
+  // answer manifest downloads with 401 after a game updates.
+  const refreshManifests = async (g) => {
+    const key = String(g.appid);
+    setRefreshingManifests(key);
+    try {
+      const res = await api.refreshManifestGids(g.appid, { steamDir });
+      if (res.updated.length) {
+        const depots = res.updated.map(u => `#${u.depot_id}`).join(', ');
+        show(`Manifests updated for ${g.name} (${depots}) — re-download in Steam to apply`, 'success');
+      } else {
+        show(`Manifests already current for ${g.name}`, 'success');
+      }
+      res.warnings.forEach(w => show(w, 'error', 5000));
+      await refreshGames();
+    } catch (e) { toastError(show, 'Refresh manifests', e); }
+    finally { setRefreshingManifests(null); }
+  };
+
+  const bulkRefreshManifests = async () => {
+    const targets = games.filter(g => selected.has(String(g.appid)));
+    if (!targets.length) return;
+    setRefreshingManifests('bulk');
+    let updatedGames = 0;
+    let updatedDepots = 0;
+    const failed = [];
+    for (const g of targets) {
+      try {
+        const res = await api.refreshManifestGids(g.appid, { steamDir });
+        if (res.updated.length) {
+          updatedGames += 1;
+          updatedDepots += res.updated.length;
+        }
+      } catch (e) { failed.push(g.name); }
+    }
+    setRefreshingManifests(null);
+    setSelected(new Set());
+    if (updatedGames) {
+      show(`Manifests updated for ${updatedGames} game(s), ${updatedDepots} depot(s) — re-download in Steam to apply`, 'success');
+    } else if (!failed.length) {
+      show('All selected manifests already current', 'success');
+    }
+    failed.forEach(name => toastError(show, `Refresh manifests for ${name}`, 'failed'));
+    await refreshGames();
+  };
 
   // Prune selections that no longer exist after refreshes.
   useEffect(() => {
@@ -404,6 +451,12 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
           onClick={bulkDelete}>
           Delete Selected ({selectedCount})
         </button>
+        <button className="sm-btn" style={{ padding: '6px 10px', fontSize: 12 }}
+          disabled={!selectedCount || gamesLoading || !!refreshingManifests}
+          onClick={bulkRefreshManifests}
+          title="Re-pin current public manifest gids from steamcmd.net (fixes 401 download errors after game updates)">
+          {refreshingManifests === 'bulk' ? <Spinner /> : null} Refresh Manifests ({selectedCount})
+        </button>
       </div>
 
       {gamesLoading && !games.length
@@ -435,6 +488,15 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
                       )}
                     >
                       {g.enabled ? 'Disable' : 'Enable'}
+                    </button>
+                    <button
+                      className="sm-btn"
+                      style={{ padding: '6px 10px', fontSize: 12 }}
+                      disabled={!!refreshingManifests || gamesLoading}
+                      onClick={() => refreshManifests(g)}
+                      title="Re-pin current public manifest gids (fixes 401 download errors)"
+                    >
+                      {refreshingManifests === String(g.appid) ? <Spinner /> : null} Manifests
                     </button>
                     <button
                       className="sm-btn danger"

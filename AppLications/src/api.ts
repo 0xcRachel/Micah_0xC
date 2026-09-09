@@ -221,6 +221,35 @@ export const getLuaScriptsDir = (): Promise<string> =>
 export const checkLuaManifest = (appid: number): Promise<boolean> =>
   invoke<boolean>('check_lua_manifest', { appid });
 
+export interface ManifestRefreshEntry {
+  depot_id: number;
+  old_gid: string;
+  new_gid: string;
+}
+
+export interface ManifestRefreshResult {
+  appid: number;
+  updated: ManifestRefreshEntry[];
+  unchanged: number;
+  files_written: string[];
+  warnings: string[];
+}
+
+/**
+ * Refresh pinned manifest gids for a game from steamcmd.net's live PICS
+ * mirror. Fixes Steam answering manifest downloads with 401 after a game
+ * updates (stale gid pinned in the Lua). `steamDir` is auto-detected when
+ * omitted.
+ */
+export const refreshManifestGids = (
+  appid: number,
+  opts?: { steamDir?: string },
+): Promise<ManifestRefreshResult> =>
+  invoke<ManifestRefreshResult>('refresh_manifest_gids', {
+    appid,
+    steamDir: opts?.steamDir ?? null,
+  });
+
 /** Create or update a game entry (writes the .lua file) */
 export const upsertGame = (steamDir: string, game: GameConfig): Promise<void> =>
   invoke<void>('upsert_game', { steamDir, game });

@@ -2,5 +2,5 @@
   "minimum_version": "0.1.0",
   "latest_version": "1.0.0",
   "download_url": "https://github.com/0xcRachel/Micah_0xC/releases/latest/download/Micah_0xC.exe",
-  "release_notes": "1.0.0: fix new games invisible on Steam Sept update (PICS discovery), version badge, auto-update system, SteamSpy + Steam Community APIs."
+  "release_notes": "1.0.0: manifest auto-refresh (fixes 401 download errors), multi-provider manifest codes, per-game manifest refresh UI, auto-update system, SteamSpy + CheapShark APIs."
 }

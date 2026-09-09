@@ -1,11 +1,11 @@
 {
-  "version": "0.8.0",
-  "notes": "Micah 0xC v0.8.0 - Auto-update system, SteamSpy + Steam Community APIs, performance optimizations, signing key support",
-  "pub_date": "2026-08-30T00:00:00Z",
+  "version": "1.0.0",
+  "notes": "Micah 0xC v1.0.0 - Manifest auto-refresh (fixes 401 download errors), multi-provider manifest codes, per-game manifest refresh UI, auto-update system, SteamSpy + CheapShark APIs",
+  "pub_date": "2026-09-09T00:00:00Z",
   "platforms": {
     "windows-x86_64": {
-      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUQ09kYlExa0wzdWZ2VDczV1Uya0JZTXovNUJhQ0FqZGlWWTJ4dFg0YWQxa08zSFZBTnUwRDlodWhKbFpFRVNpK3pwNjRjVlVzTnFIQWVoTDlZcmg1RW9QMlpiWHFJQmdrPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4MDc1MzcyCWZpbGU6TWljYWhfMHhDXzAuOC4wX3g2NC1zZXR1cC5leGUKeHlaWm1hZW04cjNEY3ByM3FIa05tUUUrWkNjOE9IQXhwVUIzUEJWWURyVVI2SVU2Z1dTYTQvTjhPZzF5bVV1S3cxa24vOTdRaTRiNWMzVmFqVVpwQXc9PQo=",
-      "url": "https://github.com/0xcRachel/Micah_0xC/releases/download/v0.8.0/Micah_0xC_0.8.0_x64-setup.exe"
+      "signature": "dW50cnVzdGVkIGNvbW1lbnQ6IHNpZ25hdHVyZSBmcm9tIHRhdXJpIHNlY3JldCBrZXkKUlVUQ09kYlExa0wzdVZiRTF3bmFwcDNpSG1ZUnVrTUdLcjBXc1Q5WTl3WXZMV3pEZmtidHVWbEdCR2pzUWtwZDdPdVByOWpheWI4Y3U0L1JLd0t3WWdWeE9EcUtrS3VLMXdFPQp0cnVzdGVkIGNvbW1lbnQ6IHRpbWVzdGFtcDoxNzg4OTQwNTE4CWZpbGU6TWljYWhfMHhDXzEuMC4wX3g2NC1zZXR1cC5leGUKOWpON0h0Vmt0NHF3SXM3V0Z1YWdrTzJZcTg1SkxPWmhraWlqYzhYcnFURTh0S2wzaWcrMEhpdkZodWFSbnBncDBJTzRUakJiRHZ0dGlIeW45Q3VnQ2c9PQo=",
+      "url": "https://github.com/0xcRachel/Micah_0xC/releases/download/v1.0.0/Micah_0xC_1.0.0_x64-setup.exe"
     }
   }
 }
