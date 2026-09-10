@@ -436,6 +436,8 @@ export interface GameHealth {
   canAutoClean: boolean;
   ownershipDenied: boolean;
   manifest401s: number;
+  manifestsCached: number;
+  manifestsTotal: number;
 }
 
 /** Quet appmanifest: co cai dat Steam vs byte that tren dia (phat hien ghost) */
@@ -445,6 +447,15 @@ export const scanInstallHealth = (steamDir: string): Promise<GameHealth[]> =>
 /** Don 1 ghost: backup .acf, xoa thu muc rong + co cai dat. force cho game khong do Lua quan ly */
 export const cleanGhost = (steamDir: string, appid: number, force: boolean): Promise<string> =>
   invoke<string>('clean_ghost', { steamDir, appid, force });
+
+/** Tiêm file cục bộ bypass CDN 401 (game trả phí chưa sở hữu) — copy source_dir vào steamapps/common */
+export const injectLocalGame = (steamDir: string, appid: number, sourceDir: string): Promise<string> =>
+  invoke<string>('inject_local_game', { steamDir, appid, sourceDir });
+
+/** Chọn thư mục nguồn (dialog) trả về đường dẫn */
+export const selectSourceDir = (): Promise<string | null> =>
+  invoke<string | null>('select_source_dir');
+
 /** Mo Steam install flow cho game (1-click cai: owned/free/family chay full toc do) */
 export const triggerSteamInstall = (appid: number): Promise<void> =>
   invoke<void>('trigger_steam_install', { appid });

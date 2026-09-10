@@ -723,6 +723,19 @@ const TabHealth = ({ steamDir, show }) => {
     finally { setCleaning(null); }
   };
 
+  const inject = async (appid) => {
+    let src = null;
+    try { src = await api.selectSourceDir(); } catch (e) { show(String(e), 'error', 5000); return; }
+    if (!src) return;
+    setCleaning(appid);
+    try {
+      const msg = await api.injectLocalGame(steamDir, appid, src);
+      show(msg, 'success', 7000);
+      await refresh();
+    } catch (e) { show(String(e), 'error', 7000); }
+    finally { setCleaning(null); }
+  };
+
   if (!steamDir) return <p className="sm-empty">Select a Steam directory first.</p>;
   if (loading) return <p className="sm-empty"><Spinner /> Đang quét…</p>;
 
@@ -740,7 +753,7 @@ const TabHealth = ({ steamDir, show }) => {
           {' '}Hiện game không do Lua quản lý
         </label>
         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-          {ghosts.length} v?n d? / {rows.length} manifest
+          {ghosts.length} vấn đề / {rows.length} manifest
         </span>
       </div>
       {!visible.length ? <p className="sm-empty">Không có manifest nào.</p> : (
@@ -753,20 +766,28 @@ const TabHealth = ({ steamDir, show }) => {
                 <td>{HEALTH_LABEL[r.health] || r.health}
                   {r.ownershipDenied && (<span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)' }}>Steam từ chối: chưa sở hữu</span>)}
                   {r.manifest401s > 0 && (<span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)' }}>401 ×{r.manifest401s}</span>)}
+                  {r.manifestsTotal > 0 && (<span style={{ display: 'block', fontSize: 11, color: 'var(--text-muted)' }}>manifest {r.manifestsCached}/{r.manifestsTotal} có sẵn</span>)}
                 </td>
                 <td>{fmtBytes(r.bytesOnDisk)}</td>
-                <td>
+                <td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {r.canAutoClean && (
                     <button className="sm-btn" disabled={cleaning === r.appid}
                       onClick={() => clean(r.appid, false)}>
-                      {cleaning === r.appid ? '.' : 'D?n ghost'}
+                      {cleaning === r.appid ? '…' : 'Dọn ghost'}
                     </button>
                   )}
                   {!r.canAutoClean && (r.health === 'unmanaged_ghost' || r.health === 'unmanaged_empty') && showUnmanaged && (
                     <button className="sm-btn" disabled={cleaning === r.appid}
                       title="Game này không do Lua quản lý - chỉ dọn khi bạn chắc chắn"
                       onClick={() => { if (window.confirm(`Dọn ghost ${r.name} (${r.appid})? Steam sẽ hiện "chưa cài" trung thực.`)) clean(r.appid, true); }}>
-                      {cleaning === r.appid ? '.' : 'D?n (force)'}
+                      {cleaning === r.appid ? '…' : 'Dọn (force)'}
+                    </button>
+                  )}
+                  {(r.health !== 'healthy' && r.luaManaged) && (
+                    <button className="sm-btn primary" disabled={cleaning === r.appid}
+                      title="Bypass CDN 401: copy file game có sẵn vào Steam (không cần tải)"
+                      onClick={() => inject(r.appid)}>
+                      {cleaning === r.appid ? '…' : 'Tiêm file'}
                     </button>
                   )}
                 </td>
@@ -776,7 +797,7 @@ const TabHealth = ({ steamDir, show }) => {
         </table>
       )}
       <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-        Ghost = Steam gắn cờ "đã cài" nhưng 0 byte trên đía (download 401 trước đây). Dọn = backup .acf rồi xóa cờ, Steam hi⃇n "chưa cài" trung thực.
+        Ghost = Steam gắn cờ "đã cài" nhưng 0 byte trên đĩa (download 401 trước đây). Dọn = backup .acf rồi xóa cờ, Steam hiện "chưa cài" trung thực. Tiêm file = copy thư mục game có sẵn vào Steam, bypass CDN.
       </p>
     </div>
   );
