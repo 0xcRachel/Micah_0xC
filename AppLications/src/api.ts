@@ -250,39 +250,89 @@ export const refreshManifestGids = (
     steamDir: opts?.steamDir ?? null,
   });
 
-/**
- * Save pasted manifest request codes (`depot: code` lines, one per line)
- * for the DLL to prefer over every provider. Returns the merged pair count.
- * Codes expire in ~5 minutes — paste fresh ones and download immediately.
- */
-export const saveManifestCodeOverrides = (
-  text: string,
-  opts?: { steamDir?: string },
-): Promise<number> =>
-  invoke<number>('save_manifest_code_overrides', {
-    text,
-    steamDir: opts?.steamDir ?? null,
-  });
-
-/** Current code overrides file content (pretty JSON, `"{}"` when absent) */
-export const readManifestCodeOverrides = (
-  opts?: { steamDir?: string },
-): Promise<string> =>
-  invoke<string>('read_manifest_code_overrides', {
-    steamDir: opts?.steamDir ?? null,
-  });
-
-/** Delete the overrides file (stops using pasted codes) */
-export const clearManifestCodeOverrides = (
-  opts?: { steamDir?: string },
-): Promise<void> =>
-  invoke<void>('clear_manifest_code_overrides', {
-    steamDir: opts?.steamDir ?? null,
-  });
-
 /** Create or update a game entry (writes the .lua file) */
 export const upsertGame = (steamDir: string, game: GameConfig): Promise<void> =>
   invoke<void>('upsert_game', { steamDir, game });
+
+export interface SeededDepot {
+  depot_id: number;
+  gid: string;
+  bytes: number;
+  path: string;
+}
+
+export interface SeedManifestsResult {
+  appid: number;
+  seeded: SeededDepot[];
+  already_cached: number[];
+  missing: number[];
+  no_key: number[];
+  lua_updated: boolean;
+  warnings: string[];
+}
+
+export interface PrepareInstallReport {
+  appid: number;
+  steps: string[];
+  ready_to_install: boolean;
+  blockers: string[];
+  warnings: string[];
+}
+
+export interface DepotInstallState {
+  depot_id: number;
+  live_gid: string;
+  lua_gid: string;
+  cached: boolean;
+  has_key: boolean;
+}
+
+export interface InstallStatus {
+  appid: number;
+  state: string;
+  depots: DepotInstallState[];
+}
+
+/**
+ * Download mirror manifests for every live depot missing from depotcache
+ * and pin seeded GIDs into G-<appid>.lua (with .bak backup).
+ * Works for ANY appid; missing pieces are reported, never faked.
+ * `nodeBaseUrl` (TestBELUA web) lets Node resolve mirror URLs;
+ * without it, ManifestHub3 raw URLs are HEAD-checked directly.
+ */
+export const seedManifests = (
+  appid: number,
+  opts?: { steamDir?: string; nodeBaseUrl?: string },
+): Promise<SeedManifestsResult> =>
+  invoke<SeedManifestsResult>('seed_manifests', {
+    appid,
+    steamDir: opts?.steamDir ?? null,
+    nodeBaseUrl: opts?.nodeBaseUrl ?? null,
+  });
+
+/**
+ * Headless install readiness for ANY appid: ensures Lua, seeds manifests,
+ * then reports per-step outcome. No UI touched.
+ */
+export const prepareInstall = (
+  appid: number,
+  opts?: { steamDir?: string; nodeBaseUrl?: string },
+): Promise<PrepareInstallReport> =>
+  invoke<PrepareInstallReport>('prepare_install', {
+    appid,
+    steamDir: opts?.steamDir ?? null,
+    nodeBaseUrl: opts?.nodeBaseUrl ?? null,
+  });
+
+/** Read-only per-depot install state for ANY appid (no downloads, no writes). */
+export const installStatus = (
+  appid: number,
+  opts?: { steamDir?: string },
+): Promise<InstallStatus> =>
+  invoke<InstallStatus>('install_status', {
+    appid,
+    steamDir: opts?.steamDir ?? null,
+  });
 
 /** Delete a game's .lua file */
 export const deleteGame = (steamDir: string, appid: number): Promise<void> =>
@@ -417,61 +467,3 @@ export const getWindowRemember = (): Promise<boolean> =>
 /** Toggle window size/position persistence */
 export const setWindowRemember = (remember: boolean): Promise<void> =>
   invoke<void>('set_window_remember', { remember });
-
-// ==================== INSTALL HEALTH ====================
-
-export interface GameHealth {
-  appid: number;
-  name: string;
-  stateFlags: number;
-  installDir: string;
-  dirExists: boolean;
-  bytesOnDisk: number;
-  fileCount: number;
-  hasExe: boolean;
-  acfSizeOnDisk: number;
-  buildId: string;
-  luaManaged: boolean;
-  health: string;
-  canAutoClean: boolean;
-  ownershipDenied: boolean;
-  manifest401s: number;
-  manifestsCached: number;
-  manifestsTotal: number;
-}
-
-/** Quet appmanifest: co cai dat Steam vs byte that tren dia (phat hien ghost) */
-export const scanInstallHealth = (steamDir: string): Promise<GameHealth[]> =>
-  invoke<GameHealth[]>('scan_install_health', { steamDir });
-
-/** Don 1 ghost: backup .acf, xoa thu muc rong + co cai dat. force cho game khong do Lua quan ly */
-export const cleanGhost = (steamDir: string, appid: number, force: boolean): Promise<string> =>
-  invoke<string>('clean_ghost', { steamDir, appid, force });
-
-/** Tiêm file cục bộ bypass CDN 401 (game trả phí chưa sở hữu) — copy source_dir vào steamapps/common */
-export const injectLocalGame = (steamDir: string, appid: number, sourceDir: string): Promise<string> =>
-  invoke<string>('inject_local_game', { steamDir, appid, sourceDir });
-
-/** Chọn thư mục nguồn (dialog) trả về đường dẫn */
-export const selectSourceDir = (): Promise<string | null> =>
-  invoke<string | null>('select_source_dir');
-
-/** Mo Steam install flow cho game (1-click cai: owned/free/family chay full toc do) */
-export const triggerSteamInstall = (appid: number): Promise<void> =>
-  invoke<void>('trigger_steam_install', { appid });
-export interface SdkReport {
-  appid: number;
-  installPath: string;
-  sdk: string;
-  arch: string;
-  steamApi: boolean;
-  eos: boolean;
-  goldberg: boolean;
-  anticheat: string[];
-  unlockable: string;
-  note: string;
-}
-
-/** Phat hien SDK/bao ve cua game da cai (nen tang unlock manager) */
-export const detectGameSdk = (steamDir: string, appid: number): Promise<SdkReport> =>
-  invoke<SdkReport>('detect_game_sdk', { steamDir, appid });
