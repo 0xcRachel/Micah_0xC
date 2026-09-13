@@ -2,9 +2,9 @@ import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 const PHASE_LABEL = {
-  start: 'Bắt đầu', lua: 'Kiểm tra Lua', keys: 'Vá keys',
-  gids: 'Refresh GIDs', seed: 'Tải manifests', refresh: 'Refresh files',
-  done: 'Hoàn tất',
+  start: 'Starting', lua: 'Check Lua', keys: 'Fix keys',
+  gids: 'Refresh GIDs', seed: 'Download manifests', refresh: 'Refresh files',
+  done: 'Done',
 };
 
 /**
@@ -15,7 +15,7 @@ const PHASE_LABEL = {
 const FixJobModal = ({ job, prog, result, jobKind, onClose }) => {
   const logRef = useRef(null);
 
-  // Auto-scroll log xuống dòng mới nhất.
+  // Auto-scroll log to newest line.
   useEffect(() => {
     const el = logRef.current;
     if (el) el.scrollTop = el.scrollHeight;
@@ -31,7 +31,7 @@ const FixJobModal = ({ job, prog, result, jobKind, onClose }) => {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
           <b style={{ fontSize: 14 }}>{jobKind === 'refresh' ? 'Refresh Manifests' : 'Fix Lua'} — {job.name} <span style={{ opacity: 0.6 }}>#{job.appid}</span></b>
           <button className="sm-btn" style={{ padding: '4px 10px', fontSize: 12 }} onClick={onClose}>
-            {running ? 'Ẩn' : 'Đóng'}
+            {running ? 'Hide' : 'Close'}
           </button>
         </div>
         <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 8 }}>
@@ -46,7 +46,7 @@ const FixJobModal = ({ job, prog, result, jobKind, onClose }) => {
         </div>
         {result && result.__kind === 'refresh' && (
           <div style={{ fontSize: 12.5, marginTop: 10, lineHeight: 1.7 }}>
-            <div>✓ Depots updated: {result.updated.length ? result.updated.map(u => `#${u.depot_id} (${String(u.old_gid).slice(-6)} → ${String(u.new_gid).slice(-6)})`).join(', ') : '— (đã current)'}</div>
+            <div>✓ Depots updated: {result.updated.length ? result.updated.map(u => `#${u.depot_id} (${String(u.old_gid).slice(-6)} → ${String(u.new_gid).slice(-6)})`).join(', ') : '— (already current)'}</div>
             {result.files_written.length > 0 && (
               <div style={{ opacity: 0.75 }}>Files: {result.files_written.length}</div>
             )}
@@ -57,15 +57,15 @@ const FixJobModal = ({ job, prog, result, jobKind, onClose }) => {
         )}
         {result && result.__kind !== 'refresh' && (
           <div style={{ fontSize: 12.5, marginTop: 10, lineHeight: 1.7 }}>
-            <div>✓ Lua: {result.lua_created ? 'đã tạo mới' : 'đã có'}</div>
-            <div>✓ Keys vá thêm: {result.fixed_keys.length ? result.fixed_keys.join(', ') : '—'}</div>
+            <div>✓ Lua: {result.lua_created ? 'created' : 'exists'}</div>
+            <div>✓ Keys added: {result.fixed_keys.length ? result.fixed_keys.join(', ') : '—'}</div>
             <div>✓ GIDs refreshed: {result.refreshed_gids.length ? result.refreshed_gids.join(', ') : '—'}</div>
             <div>✓ Manifests seeded: {result.seeded.length ? result.seeded.join(', ') : '—'}</div>
             {result.missing_manifests.length > 0 && (
-              <div style={{ color: '#ff9d5c' }}>⚠ Mirror thiếu: {result.missing_manifests.join(', ')}</div>
+              <div style={{ color: '#ff9d5c' }}>⚠ Mirror missing: {result.missing_manifests.join(', ')}</div>
             )}
             {result.no_key_remaining.length > 0 && (
-              <div style={{ color: '#ff9d5c' }}>⚠ Thiếu key: {result.no_key_remaining.join(', ')}</div>
+              <div style={{ color: '#ff9d5c' }}>⚠ Missing key: {result.no_key_remaining.join(', ')}</div>
             )}
           </div>
         )}

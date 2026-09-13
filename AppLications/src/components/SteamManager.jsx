@@ -263,20 +263,20 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
     setJobKind(kind);
     setFixModal({ appid: g.appid, name: g.name });
     const title = kind === 'refresh' ? 'Refresh Manifests' : 'Fix Lua';
-    setFixProg({ phase: 'start', done: 0, total: 1, log: [`Bắt đầu ${title} cho ${g.name} (#${g.appid})…`] });
+    setFixProg({ phase: 'start', done: 0, total: 1, log: [`Starting ${title} for ${g.name} (#${g.appid})…`] });
     setFixResult(null);
   };
 
-  // ── Readiness: Lua + manifest cache + key có đủ để cài thật không? ──
+  // ── Readiness: Lua + manifest cache + key enough to actually install? ──
   const checkReady = async (g) => {
     const key = String(g.appid);
     setCheckingReady(key);
     try {
       const res = await api.checkInstallReady(g.appid, { steamDir });
       setReadiness(prev => ({ ...prev, [key]: res }));
-      if (res.ready) show(`${g.name}: sẵn sàng cài ✓`, 'success');
-      else show(`${g.name}: ${res.state} — ${res.blockers.slice(0, 2).join(' · ') || 'thiếu gì đó'}`, 'error', 6000);
-    } catch (e) { toastError(show, 'Kiểm tra sẵn sàng', e); }
+      if (res.ready) show(`${g.name}: ready to install ✓`, 'success');
+      else show(`${g.name}: ${res.state} — ${res.blockers.slice(0, 2).join(' · ') || 'missing something'}`, 'error', 6000);
+    } catch (e) { toastError(show, 'Check readiness', e); }
     finally { setCheckingReady(null); }
   };
 
@@ -292,7 +292,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
     }
     setCheckingReady(null);
     setSelected(new Set());
-    show(`Đã kiểm tra ${targets.length} game(s) — xem badge mỗi hàng`, 'success');
+    show(`Checked ${targets.length} game(s) — see row badges`, 'success');
   };
 
   // Fix Lua end-to-end: pulls a missing Lua, merges missing keys, refreshes
@@ -323,7 +323,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
       await refreshGames();
     } catch (e) {
       toastError(show, 'Fix Lua', e);
-      setFixProg(prev => ({ ...prev, log: [...prev.log.slice(-29), `lỗi: ${e?.message ?? e}`] }));
+      setFixProg(prev => ({ ...prev, log: [...prev.log.slice(-29), `error: ${e?.message ?? e}`] }));
     }
     finally { setFixingLua(null); }
   };
@@ -344,7 +344,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
         if (res.lua_created || res.fixed_keys.length || res.refreshed_gids.length || res.seeded.length) fixed += 1;
       } catch (e) {
         failed.push(g.name);
-        setFixProg(prev => ({ ...prev, log: [...prev.log.slice(-29), `lỗi: ${e?.message ?? e}`] }));
+        setFixProg(prev => ({ ...prev, log: [...prev.log.slice(-29), `error: ${e?.message ?? e}`] }));
       }
     }
     setFixingLua(null);
@@ -378,7 +378,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
       await refreshGames();
     } catch (e) {
       toastError(show, 'Refresh manifests', e);
-      setFixProg(prev => ({ ...prev, log: [...prev.log.slice(-29), `lỗi: ${e?.message ?? e}`] }));
+      setFixProg(prev => ({ ...prev, log: [...prev.log.slice(-29), `error: ${e?.message ?? e}`] }));
     }
     finally { setRefreshingManifests(null); }
   };
@@ -402,7 +402,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
         }
       } catch (e) {
         failed.push(g.name);
-        setFixProg(prev => ({ ...prev, log: [...prev.log.slice(-29), `lỗi: ${e?.message ?? e}`] }));
+        setFixProg(prev => ({ ...prev, log: [...prev.log.slice(-29), `error: ${e?.message ?? e}`] }));
       }
     }
     setRefreshingManifests(null);
@@ -623,7 +623,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
         <button className="sm-btn" style={{ padding: '6px 10px', fontSize: 12 }}
           disabled={!selectedCount || gamesLoading || !!checkingReady}
           onClick={bulkCheckReady}
-          title="Kiểm tra từng game đã đủ Lua + manifest cache + key để cài thật chưa">
+          title="Check if game has Lua + manifest cache + key to actually install">
           {checkingReady === 'bulk' ? <Spinner /> : null} Check Ready ({selectedCount})
         </button>
       </div>
@@ -687,14 +687,14 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
                     {(() => {
                       const r = readiness[String(g.appid)];
                       if (!r) return (
-                        <button className="sm-btn" style={{ padding: '6px 10px', fontSize: 12 }} disabled={!!checkingReady || gamesLoading} onClick={() => checkReady(g)} title="Kiểm tra đã đủ điều kiện cài thật chưa (Lua + manifest + key)">
+                        <button className="sm-btn" style={{ padding: '6px 10px', fontSize: 12 }} disabled={!!checkingReady || gamesLoading} onClick={() => checkReady(g)} title="Check if ready to install (Lua + manifest + key)">
                           {checkingReady === String(g.appid) ? <Spinner /> : null} Check
                         </button>
                       );
                       const color = r.ready ? '#3dd68c' : r.state === 'READY' ? '#3dd68c' : '#ff9d5c';
                       const label = r.ready ? 'Ready ✓' : r.state.replace('_', ' ');
                       return (
-                        <span className="sm-btn" style={{ padding: '6px 10px', fontSize: 11, background: r.ready ? 'rgba(61,214,140,0.12)' : 'rgba(255,157,92,0.12)', borderColor: color, color, cursor: 'default' }} title={r.blockers.join('\n') || 'Sẵn sàng'}>
+                        <span className="sm-btn" style={{ padding: '6px 10px', fontSize: 11, background: r.ready ? 'rgba(61,214,140,0.12)' : 'rgba(255,157,92,0.12)', borderColor: color, color, cursor: 'default' }} title={r.blockers.join('\n') || 'Ready'}>
                           {label}
                         </span>
                       );
@@ -721,13 +721,13 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
 // ==================== TAB: HEALTH (ghost detector) ====================
 
 const HEALTH_LABEL = {
-  healthy: 'Khỏe',
-  ghost_missing: 'Ghost thiếu file',
-  ghost_empty: 'Ghost rỗng',
-  leftover_empty: 'Thư mục trống',
-  unmanaged_ghost: 'Ghost không quản lý',
-  unmanaged_empty: 'Không quản lý rỗng',
-  not_installed: 'Chưa cài',
+  healthy: 'Healthy',
+  ghosts_missing: 'Ghost missing file',
+  ghosts_empty: 'Ghost empty',
+  leftover_empty: 'Empty folder',
+  unmanaged_ghost: 'Unmanaged ghost',
+  unmanaged_empty: 'Unmanaged empty',
+  not_installed: 'Not installed',
 };
 
 const TabHealth = ({ steamDir, show }) => {
@@ -741,7 +741,7 @@ const TabHealth = ({ steamDir, show }) => {
       const r = await api.scanInstallHealth(steamDir);
       setRows(r);
     } catch (e) {
-      show(`Health scan lỗi: ${e?.message ?? e}`, 'error', 5000);
+      show(`Health scan error: ${e?.message ?? e}`, 'error', 5000);
     } finally { setScanning(false); }
   };
   useEffect(() => { if (steamDir) scan(); }, [steamDir]);
@@ -751,33 +751,33 @@ const TabHealth = ({ steamDir, show }) => {
       const msg = await api.cleanGhost(steamDir, appid, force);
       show(msg, 'success');
       await scan();
-    } catch (e) { show(`Clean lỗi: ${e?.message ?? e}`, 'error', 5000); }
+    } catch (e) { show(`Clean error: ${e?.message ?? e}`, 'error', 5000); }
     finally { setCleaning(null); }
   };
   const cleanAll = async () => {
     if (!rows) return;
-    const ghosts = rows.filter(r => r.health !== 'healthy' && r.health !== 'not_installed' && r.canAutoClean);
-    if (!ghosts.length) { show('Không có ghost dọn được', 'success'); return; }
-    if (!confirm(`Dọn ${ghosts.length} ghost (backup .acf + xóa thư mục rỗng)?`)) return;
-    for (const r of ghosts) { try { await api.cleanGhost(steamDir, r.appid, false); } catch {} }
-    show(`Đã dọn ${ghosts.length} ghost`, 'success');
+    const ghostss = rows.filter(r => r.health !== 'healthy' && r.health !== 'not_installed' && r.canAutoClean);
+    if (!ghosts.length) { show('No ghosts to clean', 'success'); return; }
+    if (!confirm(`Clean ${ghosts.length} ghosts (backup .acf + delete empty folder)?`)) return;
+    for (const r of ghostss) { try { await api.cleanGhost(steamDir, r.appid, false); } catch {} }
+    show(`Cleaned ${ghosts.length} ghosts`, 'success');
     await scan();
   };
-  if (!steamDir) return <p className="sm-empty">Chọn Steam directory trước.</p>;
-  if (rows === null) return <p className="sm-empty">{scanning ? <><Spinner /> Đang quét...</> : 'Chưa quét'}</p>;
-  const ghosts = rows.filter(r => r.health !== 'healthy' && r.health !== 'not_installed');
+  if (!steamDir) return <p className="sm-empty">Select Steam directory first.</p>;
+  if (rows === null) return <p className="sm-empty">{scanning ? <><Spinner /> Scanning...</> : 'Not scanned'}</p>;
+  const ghostss = rows.filter(r => r.health !== 'healthy' && r.health !== 'not_installed');
   const displayRows = rows.filter(r => r.health !== 'not_installed');
   return (
     <>
       <div className="sm-action-row">
-        <button className="sm-btn primary" disabled={scanning} onClick={scan}>{scanning ? <><Spinner /> Đang quét</> : 'Quét lại'}</button>
-        <button className="sm-btn" disabled={scanning || !ghosts.some(r => r.canAutoClean)} onClick={cleanAll}>Dọn tất cả ghost ({ghosts.filter(r => r.canAutoClean).length})</button>
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{rows.length} appmanifest • {ghosts.length} ghost • {rows.filter(r => r.luaManaged).length} do Micah quản lý</span>
+        <button className="sm-btn primary" disabled={scanning} onClick={scan}>{scanning ? <><Spinner /> Scanning</> : 'Rescan'}</button>
+        <button className="sm-btn" disabled={scanning || !ghosts.some(r => r.canAutoClean)} onClick={cleanAll}>Clean all ghostss ({ghosts.filter(r => r.canAutoClean).length})</button>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{rows.length} appmanifest • {ghosts.length} ghosts • {rows.filter(r => r.luaManaged).length} managed by Micah</span>
       </div>
-      {displayRows.length === 0 ? <p className="sm-empty">Không có app nào cài (Sạch).</p> : (
+      {displayRows.length === 0 ? <p className="sm-empty">No apps installed (Clean).</p> : (
         <div className="table-scroll">
           <table className="source-table">
-            <thead><tr><th>AppID</th><th>Tên</th><th>Sức khỏe</th><th>Dir</th><th>Size</th><th>Manifest</th><th></th></tr></thead>
+            <thead><tr><th>AppID</th><th>Name</th><th>Health</th><th>Dir</th><th>Size</th><th>Manifest</th><th></th></tr></thead>
             <tbody>
               {displayRows.map(r => (
                 <tr key={r.appid}>
@@ -787,14 +787,14 @@ const TabHealth = ({ steamDir, show }) => {
                   <td>{r.installDir || '—'}</td>
                   <td>{r.bytesOnDisk ? `${(r.bytesOnDisk/1024/1024).toFixed(1)} MB` : '0'}</td>
                   <td>{r.manifestsTotal ? `${r.manifestsCached}/${r.manifestsTotal}` : '—'}</td>
-                  <td>{r.health !== 'healthy' && <button className="sm-btn danger" style={{ padding: '4px 8px', fontSize: 11 }} disabled={!!cleaning || (!r.canAutoClean && !r.luaManaged)} onClick={() => clean(r.appid, !r.canAutoClean && !r.luaManaged)}>{cleaning === String(r.appid) ? <Spinner /> : 'Dọn'}</button>}</td>
+                  <td>{r.health !== 'healthy' && <button className="sm-btn danger" style={{ padding: '4px 8px', fontSize: 11 }} disabled={!!cleaning || (!r.canAutoClean && !r.luaManaged)} onClick={() => clean(r.appid, !r.canAutoClean && !r.luaManaged)}>{cleaning === String(r.appid) ? <Spinner /> : 'Clean'}</button>}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>Micah quản lý = có G-*.lua • 5 game mua sẽ hiện healthy nhưng không do Micah quản lý — không nên dọn.</p>
+      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>Micah managed = has G-*.lua • 5 purchased games will show healthy nhưng không managed by Micah — không nên dọn.</p>
     </>
   );
 };
@@ -975,7 +975,7 @@ const TABS = [
   { id: 'status', label: 'Status' },
   { id: 'dll', label: 'DLLs' },
   { id: 'games', label: 'Games' },
-  { id: 'health', label: 'Sức khỏe' },
+  { id: 'health', label: 'Health' },
   { id: 'logs', label: 'Logs' },
   { id: 'settings', label: 'Settings' },
 ];

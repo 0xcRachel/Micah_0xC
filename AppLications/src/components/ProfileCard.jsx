@@ -69,7 +69,7 @@ const GameCard = ({
     if (!appid) return;
     setManifestStatus('checking');
     try {
-      // Premium check: lua + manifest cache + key (không chỉ lua)
+      // Premium check: lua + manifest cache + key (not just lua)
       const res = await invoke('check_install_ready', { appid });
       // res: { ready, lua_present, state, blockers }
       if (res.ready) {
@@ -77,15 +77,15 @@ const GameCard = ({
       } else if (!res.lua_present) {
         setManifestStatus('not_found');
       } else {
-        // Lua có nhưng thiếu manifest/key -> coi như chưa sẵn sàng
+        // Lua exists but missing manifest/key -> considered not ready
         setManifestStatus('not_found');
-        // Gợi ý ngắn cho user
+        // Short hint for user
         if (res.blockers && res.blockers.length) {
           show(res.blockers.slice(0, 2).join(' · '), 'error');
         }
       }
     } catch {
-      // Fallback cũ nếu backend chưa có check_install_ready
+      // Legacy fallback if backend lacks check_install_ready
       try {
         const found = await invoke('check_lua_manifest', { appid });
         setManifestStatus(found ? 'found' : 'not_found');
