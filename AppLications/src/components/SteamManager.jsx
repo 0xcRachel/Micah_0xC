@@ -718,6 +718,87 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
   );
 };
 
+// ==================== TAB: HEALTH (ghost detector) ====================
+
+const HEALTH_LABEL = {
+  healthy: 'Khỏe',
+  ghost_missing: 'Ghost thiếu file',
+  ghost_empty: 'Ghost rỗng',
+  leftover_empty: 'Thư mục trống',
+  unmanaged_ghost: 'Ghost không quản lý',
+  unmanaged_empty: 'Không quản lý rỗng',
+  not_installed: 'Chưa cài',
+};
+
+const TabHealth = ({ steamDir, show }) => {
+  const [rows, setRows] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [cleaning, setCleaning] = useState(null);
+  const scan = async () => {
+    if (!steamDir) return;
+    setScanning(true);
+    try {
+      const r = await api.scanInstallHealth(steamDir);
+      setRows(r);
+    } catch (e) {
+      show(`Health scan lỗi: ${e?.message ?? e}`, 'error', 5000);
+    } finally { setScanning(false); }
+  };
+  useEffect(() => { if (steamDir) scan(); }, [steamDir]);
+  const clean = async (appid, force) => {
+    setCleaning(String(appid));
+    try {
+      const msg = await api.cleanGhost(steamDir, appid, force);
+      show(msg, 'success');
+      await scan();
+    } catch (e) { show(`Clean lỗi: ${e?.message ?? e}`, 'error', 5000); }
+    finally { setCleaning(null); }
+  };
+  const cleanAll = async () => {
+    if (!rows) return;
+    const ghosts = rows.filter(r => r.health !== 'healthy' && r.health !== 'not_installed' && r.canAutoClean);
+    if (!ghosts.length) { show('Không có ghost dọn được', 'success'); return; }
+    if (!confirm(`Dọn ${ghosts.length} ghost (backup .acf + xóa thư mục rỗng)?`)) return;
+    for (const r of ghosts) { try { await api.cleanGhost(steamDir, r.appid, false); } catch {} }
+    show(`Đã dọn ${ghosts.length} ghost`, 'success');
+    await scan();
+  };
+  if (!steamDir) return <p className="sm-empty">Chọn Steam directory trước.</p>;
+  if (rows === null) return <p className="sm-empty">{scanning ? <><Spinner /> Đang quét...</> : 'Chưa quét'}</p>;
+  const ghosts = rows.filter(r => r.health !== 'healthy' && r.health !== 'not_installed');
+  const displayRows = rows.filter(r => r.health !== 'not_installed');
+  return (
+    <>
+      <div className="sm-action-row">
+        <button className="sm-btn primary" disabled={scanning} onClick={scan}>{scanning ? <><Spinner /> Đang quét</> : 'Quét lại'}</button>
+        <button className="sm-btn" disabled={scanning || !ghosts.some(r => r.canAutoClean)} onClick={cleanAll}>Dọn tất cả ghost ({ghosts.filter(r => r.canAutoClean).length})</button>
+        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{rows.length} appmanifest • {ghosts.length} ghost • {rows.filter(r => r.luaManaged).length} do Micah quản lý</span>
+      </div>
+      {displayRows.length === 0 ? <p className="sm-empty">Không có app nào cài (Sạch).</p> : (
+        <div className="table-scroll">
+          <table className="source-table">
+            <thead><tr><th>AppID</th><th>Tên</th><th>Sức khỏe</th><th>Dir</th><th>Size</th><th>Manifest</th><th></th></tr></thead>
+            <tbody>
+              {displayRows.map(r => (
+                <tr key={r.appid}>
+                  <td className="s-name">#{r.appid}</td>
+                  <td>{r.name || `App ${r.appid}`}</td>
+                  <td><span className="mono" style={{ color: r.health === 'healthy' ? '#3dd68c' : r.luaManaged ? '#ff9d5c' : 'var(--text-muted)' }}>{HEALTH_LABEL[r.health] || r.health}</span>{r.ownershipDenied ? ' · 401' : ''}</td>
+                  <td>{r.installDir || '—'}</td>
+                  <td>{r.bytesOnDisk ? `${(r.bytesOnDisk/1024/1024).toFixed(1)} MB` : '0'}</td>
+                  <td>{r.manifestsTotal ? `${r.manifestsCached}/${r.manifestsTotal}` : '—'}</td>
+                  <td>{r.health !== 'healthy' && <button className="sm-btn danger" style={{ padding: '4px 8px', fontSize: 11 }} disabled={!!cleaning || (!r.canAutoClean && !r.luaManaged)} onClick={() => clean(r.appid, !r.canAutoClean && !r.luaManaged)}>{cleaning === String(r.appid) ? <Spinner /> : 'Dọn'}</button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>Micah quản lý = có G-*.lua • 5 game mua sẽ hiện healthy nhưng không do Micah quản lý — không nên dọn.</p>
+    </>
+  );
+};
+
 // ==================== TAB: LOGS ====================
 
 const TabLogs = ({ steamDir, show }) => {
@@ -894,6 +975,7 @@ const TABS = [
   { id: 'status', label: 'Status' },
   { id: 'dll', label: 'DLLs' },
   { id: 'games', label: 'Games' },
+  { id: 'health', label: 'Sức khỏe' },
   { id: 'logs', label: 'Logs' },
   { id: 'settings', label: 'Settings' },
 ];
@@ -1073,6 +1155,9 @@ const SteamManager = ({ onBack }) => {
             {tab === 'games' && (
               <TabGames steamDir={steamDir} show={show}
                 games={games} gamesLoading={gamesLoading} refreshGames={refreshGames} />
+            )}
+            {tab === 'health' && (
+              <TabHealth steamDir={steamDir} show={show} />
             )}
             {tab === 'logs' && (
               <TabLogs steamDir={steamDir} show={show} />

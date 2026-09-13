@@ -412,6 +412,65 @@ export const deleteGame = (steamDir: string, appid: number): Promise<void> =>
 export const setGameEnabled = (steamDir: string, appid: number, enabled: boolean): Promise<void> =>
   invoke<void>('set_game_enabled', { steamDir, appid, enabled });
 
+// ==================== INSTALL HEALTH (ghost detector) ====================
+
+export interface GameHealth {
+  appid: number;
+  name: string;
+  stateFlags: number;
+  installDir: string;
+  dirExists: boolean;
+  bytesOnDisk: number;
+  fileCount: number;
+  hasExe: boolean;
+  acfSizeOnDisk: number;
+  buildId: string;
+  luaManaged: boolean;
+  health: string;
+  canAutoClean: boolean;
+  ownershipDenied: boolean;
+  manifest401s: number;
+  manifestsCached: number;
+  manifestsTotal: number;
+}
+
+/** Quet appmanifest: co cai dat Steam vs byte that tren dia (phat hien ghost) */
+export const scanInstallHealth = (steamDir: string): Promise<GameHealth[]> =>
+  invoke<GameHealth[]>('scan_install_health', { steamDir });
+
+/** Don 1 ghost: backup .acf, xoa thu muc rong + co cai dat. force cho game khong do Lua quan ly */
+export const cleanGhost = (steamDir: string, appid: number, force: boolean): Promise<string> =>
+  invoke<string>('clean_ghost', { steamDir, appid, force });
+
+/** Tiêm file cục bộ bypass CDN 401 (game trả phí chưa sở hữu) — copy source_dir vào steamapps/common */
+export const injectLocalGame = (steamDir: string, appid: number, sourceDir: string): Promise<string> =>
+  invoke<string>('inject_local_game', { steamDir, appid, sourceDir });
+
+/** Chọn thư mục nguồn (dialog) trả về đường dẫn */
+export const selectSourceDir = (): Promise<string | null> =>
+  invoke<string | null>('select_source_dir');
+
+/** Mo Steam install flow cho game (1-click cai: owned/free/family chay full toc do) */
+export const triggerSteamInstall = (appid: number): Promise<void> =>
+  invoke<void>('trigger_steam_install', { appid });
+
+export interface SdkReport {
+  appid: number;
+  installPath: string;
+  sdk: string;
+  arch: string;
+  steamApi: boolean;
+  eos: boolean;
+  goldberg: boolean;
+  anticheat: string[];
+  unlockable: string;
+  note: string;
+}
+
+/** Phat hien SDK/bao ve cua game da cai (nen tang unlock manager) */
+export const detectGameSdk = (steamDir: string, appid: number): Promise<SdkReport> =>
+  invoke<SdkReport>('detect_game_sdk', { steamDir, appid });
+
 // ==================== APP METADATA ====================
 
 /** Fetch game name from Steam Store API by AppID */
