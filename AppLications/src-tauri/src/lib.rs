@@ -119,6 +119,7 @@ async fn select_source_dir(app: tauri::AppHandle) -> CommandResult<Option<String
 
 #[cfg(desktop)]
 #[tauri::command]
+#[allow(deprecated)]
 fn trigger_steam_install(app: tauri::AppHandle, appid: u32) -> CommandResult<()> {
     // Opens Steam's own install flow (handles owned/free/family licenses at
     // full speed). Unowned games will 401 - see the Health tab, not a bug here.

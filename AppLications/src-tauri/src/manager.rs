@@ -3443,6 +3443,8 @@ async fn seed_manifests_inner(
     let mut seeded_gids: Vec<(u32, String)> = Vec::new();
     let total_depots = resolved.len() as u32;
     let mut done_depots = 0u32;
+    // Phase 1: already cached / missing (no network, sequential, cheap)
+    let mut to_download: Vec<(u32, String, String)> = Vec::new();
     for (depot_id, gid, url) in &resolved {
         if depotcache_has(&steam, *depot_id, gid) {
             result.already_cached.push(*depot_id);
@@ -3453,65 +3455,81 @@ async fn seed_manifests_inner(
             done_depots += 1;
             on_progress(*depot_id, done_depots, total_depots, "mirror lacks manifest".into());
         } else {
-            on_progress(*depot_id, done_depots, total_depots, "downloading".into());
-            let bytes = match client.get(url).send().await {
-                Ok(resp) if resp.status().is_success() => match resp.bytes().await {
-                    Ok(b) => b.to_vec(),
-                    Err(e) => {
-                        result.warnings.push(format!("depot {depot_id}: read error {e}"));
-                        result.missing.push(*depot_id);
+            to_download.push((*depot_id, gid.clone(), url.clone()));
+        }
+    }
+    // Phase 2: download manifests song song (giới hạn bởi JoinSet, Micah pending 4-8 depot)
+    if !to_download.is_empty() {
+        let mut join_set: tokio::task::JoinSet<(u32, String, std::result::Result<Vec<u8>, String>)> =
+            tokio::task::JoinSet::new();
+        for (depot_id, gid, url) in to_download {
+            let c = client.clone();
+            let u = url.clone();
+            join_set.spawn(async move {
+                let res: std::result::Result<Vec<u8>, String> = async {
+                    let resp = c
+                        .get(&u)
+                        .send()
+                        .await
+                        .map_err(|e| format!("download error {e}"))?;
+                    if !resp.status().is_success() {
+                        return Err(format!("mirror HTTP {}", resp.status()));
+                    }
+                    let b = resp.bytes().await.map_err(|e| format!("read error {e}"))?;
+                    Ok(b.to_vec())
+                }
+                .await;
+                (depot_id, gid, res)
+            });
+        }
+        while let Some(joined) = join_set.join_next().await {
+            let Ok((depot_id, gid, res)) = joined else {
+                continue;
+            };
+            match res {
+                Ok(bytes) => {
+                    if !manifest_looks_valid(&bytes) {
+                        result.warnings.push(format!(
+                            "depot {depot_id}: mirror file failed validation ({} bytes)",
+                            bytes.len()
+                        ));
+                        result.missing.push(depot_id);
                         done_depots += 1;
-                        on_progress(*depot_id, done_depots, total_depots, "read error".into());
+                        on_progress(depot_id, done_depots, total_depots, "validation failed".into());
                         continue;
                     }
-                },
-                Ok(resp) => {
-                    result.warnings.push(format!("depot {depot_id}: mirror HTTP {}", resp.status()));
-                    result.missing.push(*depot_id);
+                    if let Err(e) = std::fs::create_dir_all(&depotcache) {
+                        return Err(format!("cannot create depotcache: {e}"));
+                    }
+                    let dest = depotcache.join(format!("{depot_id}_{gid}.manifest"));
+                    if let Err(e) = std::fs::write(&dest, &bytes) {
+                        result.warnings.push(format!("depot {depot_id}: write error {e}"));
+                        result.missing.push(depot_id);
+                        done_depots += 1;
+                        on_progress(depot_id, done_depots, total_depots, "write error".into());
+                        continue;
+                    }
+                    let size = bytes.len() as u64;
+                    result.seeded.push(SeededDepot {
+                        depot_id,
+                        gid: gid.clone(),
+                        bytes: size,
+                        path: dest.display().to_string(),
+                    });
+                    seeded_gids.push((depot_id, gid.clone()));
                     done_depots += 1;
-                    on_progress(*depot_id, done_depots, total_depots, "mirror error".into());
-                    continue;
+                    on_progress(depot_id, done_depots, total_depots, format!("seeded {size} bytes"));
                 }
-                Err(e) => {
-                    result.warnings.push(format!("depot {depot_id}: download error {e}"));
-                    result.missing.push(*depot_id);
+                Err(msg) => {
+                    result.warnings.push(format!("depot {depot_id}: {msg}"));
+                    result.missing.push(depot_id);
                     done_depots += 1;
-                    on_progress(*depot_id, done_depots, total_depots, "download error".into());
-                    continue;
+                    on_progress(depot_id, done_depots, total_depots, msg);
                 }
-            };
-            if !manifest_looks_valid(&bytes) {
-                result.warnings.push(format!(
-                    "depot {depot_id}: mirror file failed validation ({} bytes)",
-                    bytes.len()
-                ));
-                result.missing.push(*depot_id);
-                done_depots += 1;
-                on_progress(*depot_id, done_depots, total_depots, "validation failed".into());
-                continue;
             }
-            if let Err(e) = std::fs::create_dir_all(&depotcache) {
-                return Err(format!("cannot create depotcache: {e}"));
-            }
-            let dest = depotcache.join(format!("{depot_id}_{gid}.manifest"));
-            if let Err(e) = std::fs::write(&dest, &bytes) {
-                result.warnings.push(format!("depot {depot_id}: write error {e}"));
-                result.missing.push(*depot_id);
-                done_depots += 1;
-                on_progress(*depot_id, done_depots, total_depots, "write error".into());
-                continue;
-            }
-            let size = bytes.len() as u64;
-            result.seeded.push(SeededDepot {
-                depot_id: *depot_id,
-                gid: gid.clone(),
-                bytes: size,
-                path: dest.display().to_string(),
-            });
-            seeded_gids.push((*depot_id, gid.clone()));
-            done_depots += 1;
-            on_progress(*depot_id, done_depots, total_depots, format!("seeded {size} bytes"));
         }
+    }
+    for (depot_id, _, _) in &resolved {
         if !keyed.contains(depot_id) {
             result.no_key.push(*depot_id);
         }
@@ -3877,6 +3895,7 @@ async fn fetch_steamtools_lua_text(client: &reqwest::Client, appid: u32) -> Opti
 /// is optional so a partial bundle still helps, and failure falls back to the
 /// old per-endpoint calls. Never throws — None means "bundle unavailable".
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct BundleDepot {
     depot_id: String,
     depot_key: Option<String>,
@@ -3884,6 +3903,7 @@ struct BundleDepot {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct BundleMirror {
     live_gid: String,
     mirror_url: String,
@@ -3891,6 +3911,7 @@ struct BundleMirror {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 struct BundlePayload {
     appid: String,
     name: String,
