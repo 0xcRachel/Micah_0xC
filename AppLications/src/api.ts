@@ -193,7 +193,30 @@ export interface AutoImportResult {
   steam_import_path?: string;
   lua_scripts_dir: string;
   imported: boolean;
+  manifests_seeded: number;
+  manifests_missing: number[];
 }
+
+export interface InstallReadiness {
+  appid: number;
+  ready: boolean;
+  lua_present: boolean;
+  state: string;
+  blockers: string[];
+}
+
+/**
+ * One call answering "can this game actually install right now?"
+ * Combines the Lua check with local manifest-cache coverage.
+ */
+export const checkInstallReady = (
+  appid: number,
+  opts?: { steamDir?: string },
+): Promise<InstallReadiness> =>
+  invoke<InstallReadiness>('check_install_ready', {
+    appid,
+    steamDir: opts?.steamDir ?? null,
+  });
 
 /**
  * Auto-save a Lua script into the app's fixed `lua_scripts` folder and import
@@ -333,6 +356,53 @@ export const installStatus = (
     appid,
     steamDir: opts?.steamDir ?? null,
   });
+
+export interface FixLuaReport {
+  appid: number;
+  steps: string[];
+  lua_created: boolean;
+  fixed_keys: number[];
+  refreshed_gids: number[];
+  seeded: number[];
+  missing_manifests: number[];
+  no_key_remaining: number[];
+  warnings: string[];
+}
+
+/**
+ * Audit + repair one game's Lua end-to-end: pulls a missing Lua file,
+ * merges missing depot keys, refreshes stale GIDs, seeds missing manifests.
+ * Everything unfixable is reported, never faked.
+ */
+export const fixLua = (
+  appid: number,
+  opts?: { steamDir?: string; nodeBaseUrl?: string },
+): Promise<FixLuaReport> =>
+  invoke<FixLuaReport>('fix_lua', {
+    appid,
+    steamDir: opts?.steamDir ?? null,
+    nodeBaseUrl: opts?.nodeBaseUrl ?? null,
+  });
+
+export interface FixLuaProgress {
+  appid: number;
+  phase: string;
+  done: number;
+  total: number;
+  message: string;
+}
+
+/** Live progress stream for the Fix Lua modal (`fix-lua-progress` events). */
+export const onFixLuaProgress = (
+  cb: (p: FixLuaProgress) => void,
+): Promise<UnlistenFn> =>
+  listen<FixLuaProgress>('fix-lua-progress', (e) => cb(e.payload));
+
+/** Same payload shape, emitted by Refresh Manifests (`refresh-manifests-progress`). */
+export const onRefreshManifestsProgress = (
+  cb: (p: FixLuaProgress) => void,
+): Promise<UnlistenFn> =>
+  listen<FixLuaProgress>('refresh-manifests-progress', (e) => cb(e.payload));
 
 /** Delete a game's .lua file */
 export const deleteGame = (steamDir: string, appid: number): Promise<void> =>

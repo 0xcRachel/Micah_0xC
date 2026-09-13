@@ -3,6 +3,7 @@ import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import * as api from '../api.ts';
 import { useSync } from '../sync/SyncProvider';
+import FixJobModal from './FixJobModal.jsx';
 import './SteamManager.css';
 
 
@@ -214,15 +215,129 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
   const { isDiscord, syncState } = useSync();
   const [restoring, setRestoring] = useState(null);
   const [refreshingManifests, setRefreshingManifests] = useState(null);
+  const [fixingLua, setFixingLua] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
+  // Fix Lua progress modal state (backend streams fix-lua-progress events).
+  const [fixModal, setFixModal] = useState(null);
+  const [fixProg, setFixProg] = useState({ phase: 'start', done: 0, total: 1, log: [] });
+  const [fixResult, setFixResult] = useState(null);
+  const [jobKind, setJobKind] = useState('fix');
+  const fixUnlistenRef = useRef(null);
+
+  const stopFixListen = () => {
+    if (fixUnlistenRef.current) {
+      try { fixUnlistenRef.current(); } catch {}
+      fixUnlistenRef.current = null;
+    }
+  };
+
+  useEffect(() => stopFixListen, []);
+
+  const subscribeJob = async (appid, kind) => {
+    stopFixListen();
+    try {
+      const listenFn = kind === 'refresh' ? api.onRefreshManifestsProgress : api.onFixLuaProgress;
+      fixUnlistenRef.current = await listenFn((p) => {
+        if (Number(p.appid) !== Number(appid)) return;
+        setFixProg(prev => ({
+          phase: p.phase,
+          done: p.done,
+          total: Math.max(Number(p.total) || 1, 1),
+          log: [...prev.log.slice(-29), `[${p.phase}] ${p.message}`],
+        }));
+      });
+    } catch {}
+  };
+
+  const subscribeFix = (appid) => subscribeJob(appid, 'fix');
+
+  const closeFixModal = () => {
+    stopFixListen();
+    setFixModal(null);
+    setFixResult(null);
+  };
+
+  const openFixModal = (g, kind = 'fix') => {
+    setJobKind(kind);
+    setFixModal({ appid: g.appid, name: g.name });
+    const title = kind === 'refresh' ? 'Refresh Manifests' : 'Fix Lua';
+    setFixProg({ phase: 'start', done: 0, total: 1, log: [`Bắt đầu ${title} cho ${g.name} (#${g.appid})…`] });
+    setFixResult(null);
+  };
+
+  // Fix Lua end-to-end: pulls a missing Lua, merges missing keys, refreshes
+  // stale GIDs, seeds missing manifests. Reports what it could not fix.
+  const summarizeFix = (g, res) => {
+    const bits = [];
+    if (res.lua_created) bits.push('Lua created');
+    if (res.fixed_keys.length) bits.push(`keys +${res.fixed_keys.length}`);
+    if (res.refreshed_gids.length) bits.push(`GIDs refreshed ${res.refreshed_gids.length}`);
+    if (res.seeded.length) bits.push(`manifests +${res.seeded.length}`);
+    if (res.missing_manifests.length) bits.push(`mirror lacks ${res.missing_manifests.length}`);
+    if (res.no_key_remaining.length) bits.push(`no key ${res.no_key_remaining.length}`);
+    const blocked = res.missing_manifests.length > 0 || res.no_key_remaining.length > 0;
+    show(`Fix Lua ${g.name}: ${bits.join(' · ') || 'nothing to fix'}`, blocked ? 'error' : 'success');
+    res.warnings.forEach(w => show(w, 'error', 5000));
+  };
+
+  const fixLua = async (g) => {
+    const key = String(g.appid);
+    setFixingLua(key);
+    openFixModal(g);
+    await subscribeFix(g.appid);
+    try {
+      const res = await api.fixLua(g.appid, { steamDir });
+      setFixResult(res);
+      setFixProg(prev => ({ ...prev, phase: 'done', done: prev.total }));
+      summarizeFix(g, res);
+      await refreshGames();
+    } catch (e) {
+      toastError(show, 'Fix Lua', e);
+      setFixProg(prev => ({ ...prev, log: [...prev.log.slice(-29), `lỗi: ${e?.message ?? e}`] }));
+    }
+    finally { setFixingLua(null); }
+  };
+
+  const bulkFixLua = async () => {
+    const targets = games.filter(g => selected.has(String(g.appid)));
+    if (!targets.length) return;
+    if (!confirm(`Fix Lua for ${targets.length} selected game(s)? Missing files/keys will be pulled and outdated GIDs refreshed.`)) return;
+    setFixingLua('bulk');
+    let fixed = 0;
+    const failed = [];
+    for (const g of targets) {
+      openFixModal(g);
+      await subscribeFix(g.appid);
+      try {
+        const res = await api.fixLua(g.appid, { steamDir });
+        setFixResult(res);
+        if (res.lua_created || res.fixed_keys.length || res.refreshed_gids.length || res.seeded.length) fixed += 1;
+      } catch (e) {
+        failed.push(g.name);
+        setFixProg(prev => ({ ...prev, log: [...prev.log.slice(-29), `lỗi: ${e?.message ?? e}`] }));
+      }
+    }
+    setFixingLua(null);
+    setSelected(new Set());
+    if (fixed) show(`Fix Lua: ${fixed}/${targets.length} game(s) improved`, 'success');
+    else if (!failed.length) show('Fix Lua: nothing to fix', 'success');
+    failed.forEach(name => toastError(show, `Fix Lua for ${name}`, 'failed'));
+    await refreshGames();
+  };
+
+
 
   // Refresh pinned manifest gids from steamcmd.net. Stale gids make Steam
   // answer manifest downloads with 401 after a game updates.
   const refreshManifests = async (g) => {
     const key = String(g.appid);
     setRefreshingManifests(key);
+    openFixModal(g, 'refresh');
+    await subscribeJob(g.appid, 'refresh');
     try {
       const res = await api.refreshManifestGids(g.appid, { steamDir });
+      setFixResult({ __kind: 'refresh', ...res });
+      setFixProg(prev => ({ ...prev, phase: 'done', done: prev.total }));
       if (res.updated.length) {
         const depots = res.updated.map(u => `#${u.depot_id}`).join(', ');
         show(`Manifests updated for ${g.name} (${depots}) — re-download in Steam to apply`, 'success');
@@ -231,7 +346,10 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
       }
       res.warnings.forEach(w => show(w, 'error', 5000));
       await refreshGames();
-    } catch (e) { toastError(show, 'Refresh manifests', e); }
+    } catch (e) {
+      toastError(show, 'Refresh manifests', e);
+      setFixProg(prev => ({ ...prev, log: [...prev.log.slice(-29), `lỗi: ${e?.message ?? e}`] }));
+    }
     finally { setRefreshingManifests(null); }
   };
 
@@ -243,13 +361,19 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
     let updatedDepots = 0;
     const failed = [];
     for (const g of targets) {
+      openFixModal(g, 'refresh');
+      await subscribeJob(g.appid, 'refresh');
       try {
         const res = await api.refreshManifestGids(g.appid, { steamDir });
+        setFixResult({ __kind: 'refresh', ...res });
         if (res.updated.length) {
           updatedGames += 1;
           updatedDepots += res.updated.length;
         }
-      } catch (e) { failed.push(g.name); }
+      } catch (e) {
+        failed.push(g.name);
+        setFixProg(prev => ({ ...prev, log: [...prev.log.slice(-29), `lỗi: ${e?.message ?? e}`] }));
+      }
     }
     setRefreshingManifests(null);
     setSelected(new Set());
@@ -348,8 +472,11 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
   const restoreGame = async (cg) => {
     setRestoring(String(cg.app_id));
     try {
-      await api.autoSaveAndImportLua(Number(cg.app_id), cloudGameName(cg), { steamDir });
-      show(`Restored ${cloudGameName(cg)}!`, 'success');
+      const res = await api.autoSaveAndImportLua(Number(cg.app_id), cloudGameName(cg), { steamDir });
+      const bits = [`Restored ${cloudGameName(cg)}!`];
+      if (res.manifests_seeded) bits.push(`${res.manifests_seeded} manifest(s) seeded`);
+      if (res.manifests_missing.length) bits.push(`mirror lacks depots ${res.manifests_missing.join(', ')} — download will 401`);
+      show(bits.join(' · '), res.manifests_missing.length ? 'error' : 'success');
       await refreshGames();
     } catch (e) {
       toastError(show, `Restore ${cloudGameName(cg)}`, e);
@@ -457,7 +584,21 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
           title="Re-pin current public manifest gids from steamcmd.net (fixes 401 download errors after game updates)">
           {refreshingManifests === 'bulk' ? <Spinner /> : null} Refresh Manifests ({selectedCount})
         </button>
+        <button className="sm-btn primary" style={{ padding: '6px 10px', fontSize: 12 }}
+          disabled={!selectedCount || gamesLoading || !!fixingLua}
+          onClick={bulkFixLua}
+          title="Fix Lua end-to-end: pulls missing files/keys, refreshes outdated GIDs, seeds missing manifests">
+          {fixingLua === 'bulk' ? <Spinner /> : null} Fix Lua ({selectedCount})
+        </button>
       </div>
+
+      <FixJobModal
+        job={fixModal}
+        prog={fixProg}
+        result={fixResult}
+        jobKind={jobKind}
+        onClose={closeFixModal}
+      />
 
       {gamesLoading && !games.length
         ? <p className="sm-empty"><Spinner /></p>
@@ -497,6 +638,15 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
                       title="Re-pin current public manifest gids (fixes 401 download errors)"
                     >
                       {refreshingManifests === String(g.appid) ? <Spinner /> : null} Manifests
+                    </button>
+                    <button
+                      className="sm-btn primary"
+                      style={{ padding: '6px 10px', fontSize: 12 }}
+                      disabled={!!fixingLua || gamesLoading}
+                      onClick={() => fixLua(g)}
+                      title="Fix Lua: pulls missing files/keys, refreshes outdated GIDs, seeds missing manifests"
+                    >
+                      {fixingLua === String(g.appid) ? <Spinner /> : null} Fix Lua
                     </button>
                     <button
                       className="sm-btn danger"

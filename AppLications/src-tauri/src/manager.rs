@@ -209,6 +209,13 @@ pub struct AutoImportResult {
     pub steam_import_path: Option<String>,
     pub lua_scripts_dir: String,
     pub imported: bool,
+    /// Manifest binaries seeded into depotcache during this import (step 3c).
+    /// Without these, Steam 401s the download for unowned games.
+    #[serde(default)]
+    pub manifests_seeded: u32,
+    /// Live depots whose manifest no mirror carries yet.
+    #[serde(default)]
+    pub manifests_missing: Vec<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1508,6 +1515,22 @@ pub async fn auto_save_and_import_lua(
         .await;
     }
 
+    // 3c. Best-effort manifest seed so the game can actually DOWNLOAD:
+    // Lua alone only makes Steam show the game; without a cached manifest
+    // the CDN answers 401 for unowned games. Never fails the import.
+    let (manifests_seeded, manifests_missing) = {
+        let steam_str = steam.to_string_lossy().into_owned();
+        let seed_fut = seed_manifests(Some(steam_str.as_str()), game.appid, None);
+        match tokio::time::timeout(Duration::from_secs(120), seed_fut).await {
+            Ok(Ok(seed)) => {
+                let mut missing = seed.missing.clone();
+                missing.sort_unstable();
+                (seed.seeded.len() as u32, missing)
+            }
+            Ok(Err(_)) | Err(_) => (0, Vec::new()),
+        }
+    };
+
     let steam_import_path = display_path(
         steam.join("config").join("lua").join(game_file_name(game.appid, true)),
     );
@@ -1523,6 +1546,8 @@ pub async fn auto_save_and_import_lua(
         steam_import_path: Some(steam_import_path),
         lua_scripts_dir: display_path(scripts_dir),
         imported: true,
+        manifests_seeded,
+        manifests_missing,
     })
 }
 
@@ -1537,7 +1562,11 @@ fn micah_lua_api_base() -> String {
 /// Check whether a Lua script exists for the given AppID on the internal
 /// Micah API without downloading the full payload.
 pub async fn check_lua_manifest(appid: u32) -> Result<bool> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .user_agent("Micah0xC-App")
+        .build()
+        .map_err(|e| e.to_string())?;
     let url = format!("{}/{}", micah_lua_api_base(), appid);
     let response = client
         .get(&url)
@@ -1558,7 +1587,11 @@ pub async fn check_lua_manifest(appid: u32) -> Result<bool> {
 /// script (the API serves one pre-rendered Lua blob per AppID, so no
 /// per-file listing is needed like the old ManifestHub2 repository).
 pub async fn fetch_manifest_lua_files(appid: u32) -> Result<Vec<(String, String)>> {
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(12))
+        .user_agent("Micah0xC-App")
+        .build()
+        .map_err(|e| e.to_string())?;
     let url = format!("{}/{}", micah_lua_api_base(), appid);
     let response = client
         .get(&url)
@@ -2812,6 +2845,10 @@ pub struct ManifestRefreshResult {
 /// Current public manifest gids per depot from the steamcmd.net PICS mirror.
 /// Returns (depot_id, gid) pairs; depots without a public manifest are skipped.
 pub async fn fetch_steamcmd_public_gids(appid: u32) -> Result<Vec<(u32, String)>> {
+    fetch_steamcmd_public_gids_with_retry(appid, 2).await
+}
+
+async fn fetch_steamcmd_public_gids_with_retry(appid: u32, retries: u32) -> Result<Vec<(u32, String)>> {
     if appid == 0 {
         return Err("AppId must be greater than zero".into());
     }
@@ -2821,44 +2858,62 @@ pub async fn fetch_steamcmd_public_gids(appid: u32) -> Result<Vec<(u32, String)>
         .build()
         .map_err(|err| err.to_string())?;
     let url = format!("https://api.steamcmd.net/v1/info/{appid}");
-    let data: Value = client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|err| format!("steamcmd.net request failed: {err}"))?
-        .json()
-        .await
-        .map_err(|err| format!("steamcmd.net parse failed: {err}"))?;
-    let depots = data
-        .get("data")
-        .and_then(|d| d.get(&appid.to_string()))
-        .and_then(|a| a.get("depots"))
-        .and_then(Value::as_object)
-        .ok_or_else(|| format!("steamcmd.net has no data for AppID {appid}"))?;
-    let mut out = Vec::new();
-    for (key, depot) in depots {
-        let Ok(depot_id) = key.parse::<u32>() else {
-            continue; // baselanguages / branches / privatebranches
-        };
-        let Some(gid) = depot
-            .get("manifests")
-            .and_then(|m| m.get("public"))
-            .and_then(|p| p.get("gid"))
-            .and_then(Value::as_str)
-        else {
-            continue; // shared depot or no public manifest
-        };
-        if gid.is_empty() || !gid.chars().all(|c| c.is_ascii_digit()) {
-            continue;
+    let mut last_err = String::new();
+    for attempt in 0..=retries {
+        let data: std::result::Result<Value, String> = async {
+            let data: Value = client
+                .get(&url)
+                .send()
+                .await
+                .map_err(|err| format!("steamcmd.net request failed: {err}"))?
+                .json()
+                .await
+                .map_err(|err| format!("steamcmd.net parse failed: {err}"))?;
+            Ok(data)
         }
-        out.push((depot_id, gid.to_string()));
+        .await;
+        match data {
+            Ok(data) => {
+                let depots = data
+                    .get("data")
+                    .and_then(|d| d.get(&appid.to_string()))
+                    .and_then(|a| a.get("depots"))
+                    .and_then(Value::as_object)
+                    .ok_or_else(|| format!("steamcmd.net has no data for AppID {appid}"))?;
+                let mut out = Vec::new();
+                for (key, depot) in depots {
+                    let Ok(depot_id) = key.parse::<u32>() else {
+                        continue;
+                    };
+                    let Some(gid) = depot
+                        .get("manifests")
+                        .and_then(|m| m.get("public"))
+                        .and_then(|p| p.get("gid"))
+                        .and_then(Value::as_str)
+                    else {
+                        continue;
+                    };
+                    if gid.is_empty() || !gid.chars().all(|c| c.is_ascii_digit()) {
+                        continue;
+                    }
+                    out.push((depot_id, gid.to_string()));
+                }
+                if out.is_empty() {
+                    return Err(format!(
+                        "steamcmd.net lists no public manifests for AppID {appid}"
+                    ));
+                }
+                return Ok(out);
+            }
+            Err(e) if attempt < retries => {
+                last_err = e;
+                tokio::time::sleep(Duration::from_millis(400 * (attempt as u64 + 1))).await;
+                continue;
+            }
+            Err(e) => return Err(e),
+        }
     }
-    if out.is_empty() {
-        return Err(format!(
-            "steamcmd.net lists no public manifests for AppID {appid}"
-        ));
-    }
-    Ok(out)
+    Err(last_err)
 }
 
 /// Apply fresh gids to one parsed game config.
@@ -2914,13 +2969,37 @@ fn apply_fresh_gids(
 
 /// Refresh pinned manifest gids inside already-saved Lua files.
 /// Rewrites each changed file via render_game_lua (GOST-META included).
+/// Refresh pinned manifest gids inside already-saved Lua files.
+/// When `app` is given, streams `refresh-manifests-progress` events
+/// (same {appid, phase, done, total, message} shape as fix-lua-progress)
+/// so the UI progress modal stays live. Pass None for silent callers
+/// (tests, fix_lua which emits its own gids-phase events).
 pub async fn refresh_manifest_gids_for_paths(
+    app: Option<&tauri::AppHandle>,
     appid: u32,
     paths: &[PathBuf],
 ) -> Result<ManifestRefreshResult> {
     if appid == 0 {
         return Err("AppId must be greater than zero".into());
     }
+    let emit = |phase: &str, done: u32, total: u32, message: String| {
+        if let Some(handle) = app {
+            use tauri::Emitter;
+            handle
+                .emit(
+                    "refresh-manifests-progress",
+                    FixLuaProgress {
+                        appid,
+                        phase: phase.to_string(),
+                        done,
+                        total,
+                        message,
+                    },
+                )
+                .ok();
+        }
+    };
+    emit("start", 0, paths.len().max(1) as u32, "fetching live GIDs".into());
     let gids = fetch_steamcmd_public_gids(appid).await?;
     let mut result = ManifestRefreshResult {
         appid,
@@ -2929,11 +3008,19 @@ pub async fn refresh_manifest_gids_for_paths(
         files_written: Vec::new(),
         warnings: Vec::new(),
     };
+    let total = paths.len().max(1) as u32;
+    let mut done = 0u32;
     for path in paths {
         let file_name = path
             .file_name()
             .and_then(OsStr::to_str)
             .unwrap_or("game.lua");
+        emit(
+            "refresh",
+            done,
+            total,
+            format!("checking {file_name}"),
+        );
         let text = match fs::read_to_string(path) {
             Ok(text) => text,
             Err(err) => {
@@ -2976,10 +3063,28 @@ pub async fn refresh_manifest_gids_for_paths(
         result.files_written.push(display_path(path));
         for entry in updated {
             if !result.updated.iter().any(|e| e.depot_id == entry.depot_id) {
+                emit(
+                    "refresh",
+                    done,
+                    total,
+                    format!("depot {}: {} → {}", entry.depot_id, entry.old_gid, entry.new_gid),
+                );
                 result.updated.push(entry);
             }
         }
+        done += 1;
+        emit("refresh", done, total, format!("{file_name}: done"));
     }
+    emit(
+        "done",
+        1,
+        1,
+        format!(
+            "finished: {} updated, {} unchanged",
+            result.updated.len(),
+            result.unchanged
+        ),
+    );
     Ok(result)
 }
 
@@ -3021,7 +3126,7 @@ pub async fn refresh_manifest_gids(
     if paths.is_empty() {
         return Err(format!("No Lua files found for AppID {appid}"));
     }
-    refresh_manifest_gids_for_paths(appid, &paths).await
+    refresh_manifest_gids_for_paths(Some(app), appid, &paths).await
 }
 
 // ==================== MIRROR MANIFEST SEED ====================
@@ -3212,8 +3317,9 @@ fn read_game_lua(steam_dir: &std::path::Path, appid: u32) -> Result<String> {
         .map_err(|_| format!("G-{appid}.lua not found — import Lua first"))
 }
 
-/// Mirror URL map for live depots: Node API when a base URL is given,
-/// otherwise direct ManifestHub3 raw URLs (HEAD-checked per depot).
+/// Mirror URL map for live depots: bundle first (1 round-trip covers all),
+/// then the old manifests endpoint, otherwise direct ManifestHub3 raw URLs
+/// (HEAD-checked per depot).
 async fn resolve_mirror_urls(
     client: &reqwest::Client,
     appid: u32,
@@ -3222,6 +3328,25 @@ async fn resolve_mirror_urls(
 ) -> Vec<(u32, String, String)> {
     // (depot, live_gid, mirror_url)
     if let Some(base) = node_base_url.map(str::trim).filter(|s| !s.is_empty()) {
+        // Prefer bundle: lua+depots+mirrors in one call (P2).
+        if let Some(bundle) = fetch_bundle(&client, base, appid).await {
+            if !bundle.mirrors.is_empty() {
+                let mut out = Vec::new();
+                for (depot_id, gid) in live {
+                    let key = depot_id.to_string();
+                    if let Some(entry) = bundle.mirrors.get(&key) {
+                        if entry.mirror_ok && !entry.mirror_url.is_empty() {
+                            out.push((*depot_id, gid.clone(), entry.mirror_url.clone()));
+                        } else {
+                            out.push((*depot_id, gid.clone(), String::new()));
+                        }
+                    } else {
+                        out.push((*depot_id, gid.clone(), String::new()));
+                    }
+                }
+                return out;
+            }
+        }
         let url = format!("{}/api/public/manifests/{}", base.trim_end_matches('/'), appid);
         if let Ok(resp) = client.get(&url).send().await {
             if let Ok(body) = resp.json::<serde_json::Value>().await {
@@ -3273,6 +3398,18 @@ pub async fn seed_manifests(
     appid: u32,
     node_base_url: Option<&str>,
 ) -> Result<SeedManifestsResult> {
+    seed_manifests_inner(steam_dir, appid, node_base_url, &|_, _, _, _| {}).await
+}
+
+/// Inner seeder with a per-depot progress hook (depot_id, done, total, note).
+/// fix_lua forwards these as modal events; other callers pass a no-op.
+/// The hook must be Send: Tauri commands run on a multi-thread runtime.
+async fn seed_manifests_inner(
+    steam_dir: Option<&str>,
+    appid: u32,
+    node_base_url: Option<&str>,
+    on_progress: &(dyn Fn(u32, u32, u32, String) + Send + Sync),
+) -> Result<SeedManifestsResult> {
     if appid == 0 {
         return Err("AppId must be greater than zero".into());
     }
@@ -3304,29 +3441,42 @@ pub async fn seed_manifests(
         warnings: Vec::new(),
     };
     let mut seeded_gids: Vec<(u32, String)> = Vec::new();
+    let total_depots = resolved.len() as u32;
+    let mut done_depots = 0u32;
     for (depot_id, gid, url) in &resolved {
         if depotcache_has(&steam, *depot_id, gid) {
             result.already_cached.push(*depot_id);
+            done_depots += 1;
+            on_progress(*depot_id, done_depots, total_depots, "cached".into());
         } else if url.is_empty() {
             result.missing.push(*depot_id);
+            done_depots += 1;
+            on_progress(*depot_id, done_depots, total_depots, "mirror lacks manifest".into());
         } else {
+            on_progress(*depot_id, done_depots, total_depots, "downloading".into());
             let bytes = match client.get(url).send().await {
                 Ok(resp) if resp.status().is_success() => match resp.bytes().await {
                     Ok(b) => b.to_vec(),
                     Err(e) => {
                         result.warnings.push(format!("depot {depot_id}: read error {e}"));
                         result.missing.push(*depot_id);
+                        done_depots += 1;
+                        on_progress(*depot_id, done_depots, total_depots, "read error".into());
                         continue;
                     }
                 },
                 Ok(resp) => {
                     result.warnings.push(format!("depot {depot_id}: mirror HTTP {}", resp.status()));
                     result.missing.push(*depot_id);
+                    done_depots += 1;
+                    on_progress(*depot_id, done_depots, total_depots, "mirror error".into());
                     continue;
                 }
                 Err(e) => {
                     result.warnings.push(format!("depot {depot_id}: download error {e}"));
                     result.missing.push(*depot_id);
+                    done_depots += 1;
+                    on_progress(*depot_id, done_depots, total_depots, "download error".into());
                     continue;
                 }
             };
@@ -3336,6 +3486,8 @@ pub async fn seed_manifests(
                     bytes.len()
                 ));
                 result.missing.push(*depot_id);
+                done_depots += 1;
+                on_progress(*depot_id, done_depots, total_depots, "validation failed".into());
                 continue;
             }
             if let Err(e) = std::fs::create_dir_all(&depotcache) {
@@ -3345,15 +3497,20 @@ pub async fn seed_manifests(
             if let Err(e) = std::fs::write(&dest, &bytes) {
                 result.warnings.push(format!("depot {depot_id}: write error {e}"));
                 result.missing.push(*depot_id);
+                done_depots += 1;
+                on_progress(*depot_id, done_depots, total_depots, "write error".into());
                 continue;
             }
+            let size = bytes.len() as u64;
             result.seeded.push(SeededDepot {
                 depot_id: *depot_id,
                 gid: gid.clone(),
-                bytes: bytes.len() as u64,
+                bytes: size,
                 path: dest.display().to_string(),
             });
             seeded_gids.push((*depot_id, gid.clone()));
+            done_depots += 1;
+            on_progress(*depot_id, done_depots, total_depots, format!("seeded {size} bytes"));
         }
         if !keyed.contains(depot_id) {
             result.no_key.push(*depot_id);
@@ -3476,6 +3633,597 @@ pub async fn prepare_install(
                 .into(),
         );
     }
+    Ok(report)
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstallReadiness {
+    pub appid: u32,
+    /// True only when Lua exists AND every live depot is cached + keyed.
+    pub ready: bool,
+    pub lua_present: bool,
+    /// install_status state word: READY/PARTIAL/STALE_MANIFEST/...
+    pub state: String,
+    pub blockers: Vec<String>,
+}
+
+/// One call answering "can this game actually install right now?"
+/// Combines the Lua check (old check_lua_manifest only asked the Lua API)
+/// with local manifest-cache coverage from install_status.
+pub async fn check_install_ready(
+    steam_dir: Option<&str>,
+    appid: u32,
+) -> Result<InstallReadiness> {
+    if appid == 0 {
+        return Err("AppId must be greater than zero".into());
+    }
+    let steam = resolve_steam_dir_opt(steam_dir)?;
+    let lua_present = lua_dir(&steam).join(format!("G-{appid}.lua")).exists();
+    let mut blockers = Vec::new();
+    if !lua_present {
+        blockers.push(format!("G-{appid}.lua not found — import Lua first"));
+    }
+    let status = install_status(Some(&steam.to_string_lossy()), appid).await;
+    let (state, ready) = match status {
+        Ok(s) => {
+            for d in &s.depots {
+                if !d.has_key {
+                    blockers.push(format!("depot {} has no decryption key in Lua", d.depot_id));
+                } else if !d.cached {
+                    let cached_note = if d.lua_gid.is_empty() {
+                        " (no GID pinned in Lua)"
+                    } else {
+                        ""
+                    };
+                    blockers.push(format!(
+                        "no cached manifest for depot {} (live GID {}){}",
+                        d.depot_id, d.live_gid, cached_note
+                    ));
+                }
+            }
+            let ready = lua_present && s.state == "READY";
+            (s.state, ready)
+        }
+        Err(e) => {
+            blockers.push(format!("status check failed: {e}"));
+            ("UNKNOWN".to_string(), false)
+        }
+    };
+    Ok(InstallReadiness {
+        appid,
+        ready,
+        lua_present,
+        state,
+        blockers,
+    })
+}
+
+/// Live progress event for the Fix Lua modal (`fix-lua-progress`).
+/// `phase`: lua → keys → gids → seed → done. `done`/`total` drive the bar;
+/// `message` streams into the modal log.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FixLuaProgress {
+    pub appid: u32,
+    pub phase: String,
+    pub done: u32,
+    pub total: u32,
+    pub message: String,
+}
+
+fn emit_fix_progress(
+    app: &tauri::AppHandle,
+    appid: u32,
+    phase: &str,
+    done: u32,
+    total: u32,
+    message: String,
+) {
+    use tauri::Emitter;
+    app.emit(
+        "fix-lua-progress",
+        FixLuaProgress {
+            appid,
+            phase: phase.to_string(),
+            done,
+            total,
+            message,
+        },
+    )
+    .ok();
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FixLuaReport {
+    pub appid: u32,
+    pub steps: Vec<String>,
+    pub lua_created: bool,
+    pub fixed_keys: Vec<u32>,
+    pub refreshed_gids: Vec<u32>,
+    pub seeded: Vec<u32>,
+    pub missing_manifests: Vec<u32>,
+    pub no_key_remaining: Vec<u32>,
+    pub warnings: Vec<String>,
+}
+
+fn is_hex64(s: &str) -> bool {
+    s.len() == 64 && s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+/// Append `addappid(depot,0,"key")` lines for depots lacking keys.
+/// Returns (new_text, added_depots). Pure: no I/O, covered by tests.
+fn merge_missing_keys_text(text: &str, keys: &[(u32, String)]) -> (String, Vec<u32>) {
+    let have = keyed_depots_in_lua(text);
+    let mut fresh = text.to_string();
+    if !fresh.ends_with('\n') {
+        fresh.push('\n');
+    }
+    let mut added = Vec::new();
+    let mut list: Vec<(u32, String)> = keys.to_vec();
+    list.sort_by_key(|(depot, _)| *depot);
+    for (depot, key) in list {
+        if have.contains(&depot) || added.contains(&depot) {
+            continue;
+        }
+        if !is_hex64(&key) {
+            continue;
+        }
+        fresh.push_str(&format!("addappid({depot},0,\"{}\")\n", key.to_lowercase()));
+        added.push(depot);
+    }
+    (fresh, added)
+}
+
+fn write_lua_with_backup(path: &std::path::Path, text: &str) -> Result<()> {
+    let bak = format!("{}.bak", path.display());
+    let _ = std::fs::copy(path, &bak);
+    std::fs::write(path, text).map_err(|e| format!("cannot write {}: {e}", path.display()))
+}
+
+/// Depot keys from the Node layer (`/api/public/depots/[appid]`).
+async fn fetch_node_depot_keys(
+    client: &reqwest::Client,
+    node_base_url: &str,
+    appid: u32,
+) -> Vec<(u32, String)> {
+    let url = format!(
+        "{}/api/public/depots/{}",
+        node_base_url.trim_end_matches('/'),
+        appid
+    );
+    let mut out = Vec::new();
+    let Ok(resp) = client.get(&url).send().await else {
+        return out;
+    };
+    if !resp.status().is_success() {
+        return out;
+    }
+    let Ok(body) = resp.json::<serde_json::Value>().await else {
+        return out;
+    };
+    let empty = Vec::new();
+    let rows = body
+        .get("depots")
+        .and_then(|v| v.as_array())
+        .unwrap_or(&empty);
+    for row in rows {
+        let depot = row
+            .get("depot_id")
+            .and_then(|v| v.as_str().and_then(|s| s.parse::<u32>().ok()).or_else(|| v.as_u64().and_then(|n| u32::try_from(n).ok())));
+        let key = row
+            .get("depot_key")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .unwrap_or_default();
+        if let (Some(depot), key) = (depot, key) {
+            if is_hex64(key) {
+                out.push((depot, key.to_lowercase()));
+            }
+        }
+    }
+    out
+}
+
+/// Depot keys parsed from a raw Lua text (steamtools.games fallback).
+fn fetch_lua_text_keys(text: &str) -> Vec<(u32, String)> {
+    find_addappid_entries(text)
+        .into_iter()
+        .filter_map(|e| {
+            e.depot_key
+                .filter(|k| is_hex64(k))
+                .map(|k| (e.appid, k.to_lowercase()))
+        })
+        .collect()
+}
+
+/// Full Lua file from the Node layer (`/api/Micah/lua/[appid]`, text/plain).
+async fn fetch_node_lua_file(
+    client: &reqwest::Client,
+    node_base_url: &str,
+    appid: u32,
+) -> Option<String> {
+    let url = format!(
+        "{}/api/Micah/lua/{}",
+        node_base_url.trim_end_matches('/'),
+        appid
+    );
+    let resp = client.get(&url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let text = resp.text().await.ok()?;
+    if text.contains("addappid(") {
+        Some(text)
+    } else {
+        None
+    }
+}
+
+async fn fetch_steamtools_lua_text(client: &reqwest::Client, appid: u32) -> Option<String> {
+    let url = format!("https://steamtools.games/api/files/{appid}/lua");
+    let resp = client.get(&url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let text = resp.text().await.ok()?;
+    if text.contains("addappid(") {
+        Some(text)
+    } else {
+        None
+    }
+}
+
+/// Single-call bundle: lua + depots + mirrors + token in one Node round-trip.
+/// New in P2: fix_lua + seed prefer this when node_base_url is set; every field
+/// is optional so a partial bundle still helps, and failure falls back to the
+/// old per-endpoint calls. Never throws — None means "bundle unavailable".
+#[derive(Debug, Clone, Deserialize)]
+struct BundleDepot {
+    depot_id: String,
+    depot_key: Option<String>,
+    manifest: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct BundleMirror {
+    live_gid: String,
+    mirror_url: String,
+    mirror_ok: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct BundlePayload {
+    appid: String,
+    name: String,
+    lua: Option<String>,
+    token: Option<String>,
+    depots: Vec<BundleDepot>,
+    mirrors: std::collections::HashMap<String, BundleMirror>,
+}
+
+async fn fetch_bundle(
+    client: &reqwest::Client,
+    node_base_url: &str,
+    appid: u32,
+) -> Option<BundlePayload> {
+    let url = format!(
+        "{}/api/Micah/bundle/{}",
+        node_base_url.trim_end_matches('/'),
+        appid
+    );
+    let resp = client.get(&url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let body: serde_json::Value = resp.json().await.ok()?;
+    // bundle returns {appid, name, lua, token, depots[], mirrors{depot:{live_gid,mirror_url,mirror_ok}}}
+    // Depots may be missing when DB empty; mirrors may be empty when live unavailable — still useful.
+    let lua = body.get("lua").and_then(|v| v.as_str()).map(|s| s.to_string());
+    let depots: Vec<BundleDepot> = body
+        .get("depots")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|row| {
+                    let depot_id = row.get("depot_id")?.as_str()?.to_string();
+                    Some(BundleDepot {
+                        depot_id,
+                        depot_key: row.get("depot_key").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                        manifest: row.get("manifest").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    let mirrors: std::collections::HashMap<String, BundleMirror> = body
+        .get("mirrors")
+        .and_then(|v| v.as_object())
+        .map(|map| {
+            map.iter()
+                .filter_map(|(k, v)| {
+                    Some((
+                        k.clone(),
+                        BundleMirror {
+                            live_gid: v.get("live_gid")?.as_str()?.to_string(),
+                            mirror_url: v.get("mirror_url")?.as_str().unwrap_or("").to_string(),
+                            mirror_ok: v.get("mirror_ok")?.as_bool().unwrap_or(false),
+                        },
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    Some(BundlePayload {
+        appid: body
+            .get("appid")
+            .and_then(|v| v.as_str())
+            .unwrap_or(&appid.to_string())
+            .to_string(),
+        name: body
+            .get("name")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string(),
+        lua,
+        token: body.get("token").and_then(|v| v.as_str()).map(|s| s.to_string()),
+        depots,
+        mirrors,
+    })
+}
+
+/// Audit + repair one game's Lua end-to-end, for ANY appid:
+///
+/// 1. Lua missing? Pull it (Node `/api/Micah/lua` first, steamtools.games
+///    fallback) and save as `G-<appid>.lua`.
+/// 2. Depots without keys? Merge keys (Node depots endpoint, then
+///    steamtools.games Lua). Backup `.bak` before every write.
+/// 3. Stale pinned GIDs? Refresh to live steamcmd.net GIDs.
+/// 4. Missing manifests? Seed from mirrors (pins seeded GIDs).
+///
+/// Everything missing that cannot be fixed is reported, never faked.
+pub async fn fix_lua(
+    app: &tauri::AppHandle,
+    steam_dir: Option<&str>,
+    appid: u32,
+    node_base_url: Option<&str>,
+) -> Result<FixLuaReport> {
+    if appid == 0 {
+        return Err("AppId must be greater than zero".into());
+    }
+    // Phase totals: lua(1) + keys(1) + gids(1) + seed per-depot + done(1).
+    // Live depot count is unknown until the GID lookup, so seed progress
+    // re-emits with the real total once known.
+    emit_fix_progress(app, appid, "start", 0, 1, "starting Fix Lua".into());
+    let mut report = FixLuaReport {
+        appid,
+        steps: Vec::new(),
+        lua_created: false,
+        fixed_keys: Vec::new(),
+        refreshed_gids: Vec::new(),
+        seeded: Vec::new(),
+        missing_manifests: Vec::new(),
+        no_key_remaining: Vec::new(),
+        warnings: Vec::new(),
+    };
+    let steam = resolve_steam_dir_opt(steam_dir)?;
+    let lua_path = lua_dir(&steam).join(format!("G-{appid}.lua"));
+    let node = node_base_url.map(str::trim).filter(|s| !s.is_empty());
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .user_agent("Micah0xC/1.0")
+        .build()
+        .map_err(|err| err.to_string())?;
+
+    // --- 1. Lua file -------------------------------------------------
+    emit_fix_progress(app, appid, "lua", 0, 4, "checking Lua file".into());
+    // Opportunistically fetch bundle once when Node is configured — it carries
+    // lua/depots/mirrors together, so later phases can avoid extra round-trips.
+    let bundle = if let Some(base) = node {
+        fetch_bundle(&client, base, appid).await
+    } else {
+        None
+    };
+    if !lua_path.exists() {
+        report.steps.push("lua: missing".into());
+        let mut pulled: Option<String> = bundle.as_ref().and_then(|b| b.lua.clone());
+        if pulled.is_some() {
+            report.steps.push("lua: pulled from bundle".into());
+        }
+        if pulled.is_none() {
+            if let Some(base) = node {
+                pulled = fetch_node_lua_file(&client, base, appid).await;
+                if pulled.is_some() {
+                    report.steps.push("lua: pulled from Node layer".into());
+                }
+            }
+        }
+        if pulled.is_none() {
+            pulled = fetch_steamtools_lua_text(&client, appid).await;
+            if pulled.is_some() {
+                report.steps.push("lua: pulled from steamtools.games".into());
+            }
+        }
+        match pulled {
+            Some(text) => {
+                if let Some(parent) = lua_path.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                std::fs::write(&lua_path, text)
+                    .map_err(|e| format!("cannot write {}: {e}", lua_path.display()))?;
+                report.lua_created = true;
+                report.steps.push("lua: created".into());
+            }
+            None => {
+                report.warnings.push(format!(
+                    "G-{appid}.lua not found and no source has it — import Lua first"
+                ));
+                emit_fix_progress(app, appid, "done", 1, 1, "nothing to fix (no Lua)".into());
+                return Ok(report);
+            }
+        }
+    } else {
+        report.steps.push("lua: present".into());
+    }
+    emit_fix_progress(app, appid, "lua", 1, 4, "Lua file OK".into());
+    let read_lua = || std::fs::read_to_string(&lua_path).unwrap_or_default();
+
+    // --- 2. Missing keys ---------------------------------------------
+    emit_fix_progress(app, appid, "keys", 1, 4, "fetching live GIDs".into());
+    let live = fetch_steamcmd_public_gids(appid)
+        .await
+        .map_err(|e| format!("live GID lookup failed: {e}"))?;
+    let mut text = read_lua();
+    let mut keyed = keyed_depots_in_lua(&text);
+    let missing_keys: Vec<u32> = live
+        .iter()
+        .map(|(depot, _)| *depot)
+        .filter(|depot| !keyed.contains(depot))
+        .collect();
+    if !missing_keys.is_empty() {
+        report.steps.push(format!("keys: {} missing", missing_keys.len()));
+        let mut candidates: Vec<(u32, String)> = Vec::new();
+        if let Some(b) = bundle.as_ref() {
+            for dep in &b.depots {
+                if let (Ok(depot), Some(key)) = (
+                    dep.depot_id.parse::<u32>(),
+                    dep.depot_key.as_deref(),
+                ) {
+                    if is_hex64(key) {
+                        candidates.push((depot, key.to_lowercase()));
+                    }
+                }
+            }
+            if !candidates.is_empty() {
+                report.steps.push("keys: from bundle".into());
+            }
+        }
+        if candidates.len() < missing_keys.len() {
+            if let Some(base) = node {
+                candidates.extend(fetch_node_depot_keys(&client, base, appid).await);
+            }
+        }
+        // Fallback covers Node gaps (DB key-less apps).
+        if candidates.len() < missing_keys.len() {
+            if let Some(lua_text) = fetch_steamtools_lua_text(&client, appid).await {
+                candidates.extend(fetch_lua_text_keys(&lua_text));
+            }
+        }
+        let wanted: Vec<(u32, String)> = candidates
+            .into_iter()
+            .filter(|(depot, _)| missing_keys.contains(depot))
+            .collect();
+        let (next, added) = merge_missing_keys_text(&text, &wanted);
+        if !added.is_empty() {
+            write_lua_with_backup(&lua_path, &next)?;
+            report.fixed_keys.extend(&added);
+            report.steps.push(format!("keys: fixed {}", added.len()));
+            text = next;
+            keyed = keyed_depots_in_lua(&text);
+        }
+        for depot in &missing_keys {
+            if !keyed.contains(depot) {
+                report.no_key_remaining.push(*depot);
+            }
+        }
+        if !report.no_key_remaining.is_empty() {
+            report.warnings.push(format!(
+                "no source has keys for depot(s) {:?} — encrypted content stays locked",
+                report.no_key_remaining
+            ));
+        }
+    } else {
+        report.steps.push("keys: complete".into());
+    }
+    emit_fix_progress(
+        app,
+        appid,
+        "keys",
+        2,
+        4,
+        format!("keys checked ({} fixed)", report.fixed_keys.len()),
+    );
+
+    // --- 3. Stale GIDs ------------------------------------------------
+    emit_fix_progress(app, appid, "gids", 2, 4, "refreshing pinned GIDs".into());
+    match refresh_manifest_gids_for_paths(None, appid, &[lua_path.clone()]).await {
+        Ok(refresh) => {
+            for entry in refresh.updated {
+                if !report.refreshed_gids.contains(&entry.depot_id) {
+                    report.refreshed_gids.push(entry.depot_id);
+                }
+            }
+            report.warnings.extend(refresh.warnings);
+            report.steps.push(format!("gids: {} refreshed", report.refreshed_gids.len()));
+        }
+        Err(e) => {
+            report.warnings.push(format!("gid refresh skipped: {e}"));
+            report.steps.push("gids: skipped".into());
+        }
+    }
+
+    // --- 4. Seed manifests --------------------------------------------
+    emit_fix_progress(
+        app,
+        appid,
+        "gids",
+        3,
+        4,
+        format!("GIDs refreshed ({})", report.refreshed_gids.len()),
+    );
+    let steam_str = steam.to_string_lossy().into_owned();
+    let seed_total = live.len() as u32;
+    let seed_progress = |depot_id: u32, done: u32, total: u32, note: String| {
+        // Map per-depot seed progress into the overall bar (phase "seed").
+        let _ = total;
+        emit_fix_progress(
+            app,
+            appid,
+            "seed",
+            3 + done.min(seed_total),
+            3 + seed_total + 1,
+            format!("depot {depot_id}: {note}"),
+        );
+    };
+    match seed_manifests_inner(Some(&steam_str), appid, node, &seed_progress).await {
+        Ok(seed) => {
+            report.seeded = seed.seeded.iter().map(|s| s.depot_id).collect();
+            report.missing_manifests = seed.missing.clone();
+            for d in &seed.no_key {
+                if !report.no_key_remaining.contains(d) {
+                    report.no_key_remaining.push(*d);
+                }
+            }
+            report.warnings.extend(seed.warnings);
+            report.steps.push(format!(
+                "seed: {} new, {} cached, {} missing",
+                seed.seeded.len(),
+                seed.already_cached.len(),
+                seed.missing.len()
+            ));
+            if seed.lua_updated {
+                report.steps.push("lua: pins updated to seeded GIDs".into());
+            }
+        }
+        Err(e) => {
+            report.warnings.push(format!("seed skipped: {e}"));
+            report.steps.push("seed: skipped".into());
+        }
+    }
+    report.no_key_remaining.sort_unstable();
+    report.missing_manifests.sort_unstable();
+    emit_fix_progress(
+        app,
+        appid,
+        "done",
+        1,
+        1,
+        format!(
+            "finished: {} seeded, {} missing manifests, {} keyless",
+            report.seeded.len(),
+            report.missing_manifests.len(),
+            report.no_key_remaining.len()
+        ),
+    );
     Ok(report)
 }
 
@@ -4953,7 +5701,7 @@ mod tests {
             setManifestid(3548581, \"4284817031895201949\")\n";
         let path = dir.join("G-3548580.lua");
         fs::write(&path, stale).unwrap();
-        let summary = refresh_manifest_gids_for_paths(3548580, &[path.clone()])
+        let summary = refresh_manifest_gids_for_paths(None, 3548580, &[path.clone()])
             .await
             .expect("refresh must succeed");
         assert_eq!(summary.updated.len(), 1);
@@ -4982,7 +5730,7 @@ mod tests {
             setManifestid(1117851, \"819870908970387521\")\n";
         let path = dir.join("G-268910.lua");
         fs::write(&path, stale).unwrap();
-        let summary = refresh_manifest_gids_for_paths(268910, &[path.clone()])
+        let summary = refresh_manifest_gids_for_paths(None, 268910, &[path.clone()])
             .await
             .expect("refresh must succeed");
         // Every depot with a public manifest must move forward; the shared
@@ -5148,6 +5896,72 @@ mod tests {
             }
             fs::remove_dir_all(&steam).unwrap();
         });
+    }
+
+    #[test]
+    fn merge_missing_keys_appends_only_gaps() {
+        let text = "addappid(1)\naddappid(11,0,\"4bd410e2ecc28dd07ee6d887a275a6b32edaeca1e6d401ccab204fe35bd9b99d\")\n";
+        let keys = vec![
+            (11u32, "4bd410e2ecc28dd07ee6d887a275a6b32edaeca1e6d401ccab204fe35bd9b99d".to_string()),
+            (22u32, "7f9420fcff9ed1d597a17183b7253b3cb1be15c4247e4f1894fa52b455c035fe".to_string()),
+            (23u32, "not-hex".to_string()),
+        ];
+        let (next, added) = merge_missing_keys_text(text, &keys);
+        assert_eq!(added, vec![22]);
+        assert!(next.contains("addappid(22,0,\"7f9420fcff9ed1d597a17183b7253b3cb1be15c4247e4f1894fa52b455c035fe\")"));
+        assert!(!next.contains("not-hex"));
+        // Idempotent: second run adds nothing.
+        let (_, added_again) = merge_missing_keys_text(&next, &keys);
+        assert!(added_again.is_empty());
+    }
+
+    // Live-network test: temp Steam dir without Lua → never ready,
+    // always names the missing Lua as a blocker (network outcome agnostic).
+    #[test]
+    fn check_install_ready_without_lua_is_blocked() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+        rt.block_on(async {
+            let steam = temp_steam_dir();
+            fs::write(steam.join("steam.exe"), b"fake").unwrap();
+            let rep = check_install_ready(
+                Some(steam.to_string_lossy().as_ref()),
+                424840,
+            )
+            .await
+            .expect("check must not error on a valid dir");
+            assert_eq!(rep.appid, 424840);
+            assert!(!rep.lua_present);
+            assert!(!rep.ready);
+            assert!(rep.blockers.iter().any(|b| b.contains("import Lua first")));
+            fs::remove_dir_all(&steam).unwrap();
+        });
+    }
+
+    #[test]
+    fn fix_progress_serializes_for_modal() {
+        let p = FixLuaProgress {
+            appid: 1,
+            phase: "seed".to_string(),
+            done: 2,
+            total: 5,
+            message: "depot 11: seeded 99 bytes".to_string(),
+        };
+        let v = serde_json::to_value(&p).unwrap();
+        assert_eq!(v["appid"], 1);
+        assert_eq!(v["phase"], "seed");
+        assert_eq!(v["done"], 2);
+        assert_eq!(v["total"], 5);
+    }
+
+    #[test]
+    fn is_hex64_guards_key_shape() {
+        assert!(is_hex64("4bd410e2ecc28dd07ee6d887a275a6b32edaeca1e6d401ccab204fe35bd9b99d"));
+        assert!(!is_hex64(""));
+        assert!(!is_hex64("xyz"));
+        assert!(!is_hex64(&"ab".repeat(31)));
     }
 
     #[test]

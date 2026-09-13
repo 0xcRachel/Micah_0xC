@@ -335,6 +335,30 @@ async fn install_status(
     manager::install_status(steam_dir.as_deref(), appid).await
 }
 
+/// One call answering "can this game actually install right now?"
+/// (Lua presence + manifest-cache coverage), for ANY appid.
+#[tauri::command]
+async fn check_install_ready(
+    steam_dir: Option<String>,
+    appid: u32,
+) -> CommandResult<manager::InstallReadiness> {
+    manager::check_install_ready(steam_dir.as_deref(), appid).await
+}
+
+/// Audit + repair one game's Lua end-to-end (pull missing Lua, merge missing
+/// keys, refresh stale GIDs, seed missing manifests). Reports everything it
+/// could not fix instead of failing silently. Streams `fix-lua-progress`
+/// events so the UI can show a live progress modal instead of a spinner.
+#[tauri::command]
+async fn fix_lua(
+    app: tauri::AppHandle,
+    steam_dir: Option<String>,
+    appid: u32,
+    node_base_url: Option<String>,
+) -> CommandResult<manager::FixLuaReport> {
+    manager::fix_lua(&app, steam_dir.as_deref(), appid, node_base_url.as_deref()).await
+}
+
 /// Validate a Lua/VDF text blob against the DepotBox public validation API.
 #[tauri::command]
 async fn validate_depotbox_lua(
@@ -913,6 +937,8 @@ pub fn run() {
             seed_manifests,
             prepare_install,
             install_status,
+            check_install_ready,
+            fix_lua,
             save_manifest_code_overrides,
             read_manifest_code_overrides,
             clear_manifest_code_overrides,
