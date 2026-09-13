@@ -222,6 +222,8 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
   const [fixProg, setFixProg] = useState({ phase: 'start', done: 0, total: 1, log: [] });
   const [fixResult, setFixResult] = useState(null);
   const [jobKind, setJobKind] = useState('fix');
+  const [readiness, setReadiness] = useState({});
+  const [checkingReady, setCheckingReady] = useState(null);
   const fixUnlistenRef = useRef(null);
 
   const stopFixListen = () => {
@@ -263,6 +265,34 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
     const title = kind === 'refresh' ? 'Refresh Manifests' : 'Fix Lua';
     setFixProg({ phase: 'start', done: 0, total: 1, log: [`Bắt đầu ${title} cho ${g.name} (#${g.appid})…`] });
     setFixResult(null);
+  };
+
+  // ── Readiness: Lua + manifest cache + key có đủ để cài thật không? ──
+  const checkReady = async (g) => {
+    const key = String(g.appid);
+    setCheckingReady(key);
+    try {
+      const res = await api.checkInstallReady(g.appid, { steamDir });
+      setReadiness(prev => ({ ...prev, [key]: res }));
+      if (res.ready) show(`${g.name}: sẵn sàng cài ✓`, 'success');
+      else show(`${g.name}: ${res.state} — ${res.blockers.slice(0, 2).join(' · ') || 'thiếu gì đó'}`, 'error', 6000);
+    } catch (e) { toastError(show, 'Kiểm tra sẵn sàng', e); }
+    finally { setCheckingReady(null); }
+  };
+
+  const bulkCheckReady = async () => {
+    const targets = games.filter(g => selected.has(String(g.appid)));
+    if (!targets.length) return;
+    setCheckingReady('bulk');
+    for (const g of targets) {
+      try {
+        const res = await api.checkInstallReady(g.appid, { steamDir });
+        setReadiness(prev => ({ ...prev, [String(g.appid)]: res }));
+      } catch {}
+    }
+    setCheckingReady(null);
+    setSelected(new Set());
+    show(`Đã kiểm tra ${targets.length} game(s) — xem badge mỗi hàng`, 'success');
   };
 
   // Fix Lua end-to-end: pulls a missing Lua, merges missing keys, refreshes
@@ -590,6 +620,12 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
           title="Fix Lua end-to-end: pulls missing files/keys, refreshes outdated GIDs, seeds missing manifests">
           {fixingLua === 'bulk' ? <Spinner /> : null} Fix Lua ({selectedCount})
         </button>
+        <button className="sm-btn" style={{ padding: '6px 10px', fontSize: 12 }}
+          disabled={!selectedCount || gamesLoading || !!checkingReady}
+          onClick={bulkCheckReady}
+          title="Kiểm tra từng game đã đủ Lua + manifest cache + key để cài thật chưa">
+          {checkingReady === 'bulk' ? <Spinner /> : null} Check Ready ({selectedCount})
+        </button>
       </div>
 
       <FixJobModal
@@ -648,6 +684,21 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
                     >
                       {fixingLua === String(g.appid) ? <Spinner /> : null} Fix Lua
                     </button>
+                    {(() => {
+                      const r = readiness[String(g.appid)];
+                      if (!r) return (
+                        <button className="sm-btn" style={{ padding: '6px 10px', fontSize: 12 }} disabled={!!checkingReady || gamesLoading} onClick={() => checkReady(g)} title="Kiểm tra đã đủ điều kiện cài thật chưa (Lua + manifest + key)">
+                          {checkingReady === String(g.appid) ? <Spinner /> : null} Check
+                        </button>
+                      );
+                      const color = r.ready ? '#3dd68c' : r.state === 'READY' ? '#3dd68c' : '#ff9d5c';
+                      const label = r.ready ? 'Ready ✓' : r.state.replace('_', ' ');
+                      return (
+                        <span className="sm-btn" style={{ padding: '6px 10px', fontSize: 11, background: r.ready ? 'rgba(61,214,140,0.12)' : 'rgba(255,157,92,0.12)', borderColor: color, color, cursor: 'default' }} title={r.blockers.join('\n') || 'Sẵn sàng'}>
+                          {label}
+                        </span>
+                      );
+                    })()}
                     <button
                       className="sm-btn danger"
                       style={{ padding: '6px 10px', fontSize: 12 }}

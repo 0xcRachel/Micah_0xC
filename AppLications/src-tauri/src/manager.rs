@@ -4143,9 +4143,33 @@ pub async fn fix_lua(
         format!("keys checked ({} fixed)", report.fixed_keys.len()),
     );
 
-    // --- 3. Stale GIDs ------------------------------------------------
+    // --- 3. Stale GIDs (reuse live already fetched — no second network call)
     emit_fix_progress(app, appid, "gids", 2, 4, "refreshing pinned GIDs".into());
-    match refresh_manifest_gids_for_paths(None, appid, &[lua_path.clone()]).await {
+    let __fix_gids_result: Result<ManifestRefreshResult> = (|| -> Result<ManifestRefreshResult> {
+        let file_name = lua_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("game.lua");
+        let text = std::fs::read_to_string(&lua_path).map_err(|e| e.to_string())?;
+        let mut game = parse_game_lua(file_name, &text)
+            .ok_or_else(|| format!("cannot parse AppID from {} (left as-is)", lua_path.display()))?;
+        let mut warnings = Vec::new();
+        let (updated, unchanged) = apply_fresh_gids(&mut game, &live, &mut warnings);
+        let mut files_written = Vec::new();
+        if !updated.is_empty() {
+            let new_text = render_game_lua(&game).map_err(|e| e.to_string())?;
+            std::fs::write(&lua_path, new_text).map_err(|e| e.to_string())?;
+            files_written.push(lua_path.display().to_string());
+        }
+        Ok(ManifestRefreshResult {
+            appid,
+            updated,
+            unchanged,
+            files_written,
+            warnings,
+        })
+    })();
+    match __fix_gids_result {
         Ok(refresh) => {
             for entry in refresh.updated {
                 if !report.refreshed_gids.contains(&entry.depot_id) {
