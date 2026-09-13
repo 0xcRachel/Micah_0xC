@@ -155,10 +155,20 @@ const ImagePreviewModal = ({ game, onClose }) => {
     if (!game.appid) return;
     setManifestStatus('checking');
     try {
-      const found = await invoke('check_lua_manifest', { appid: game.appid });
-      setManifestStatus(found ? 'found' : 'not_found');
+      const res = await invoke('check_install_ready', { appid: game.appid });
+      if (res.ready) setManifestStatus('found');
+      else if (!res.lua_present) setManifestStatus('not_found');
+      else {
+        setManifestStatus('not_found');
+        if (res.blockers?.length) show(res.blockers.slice(0, 2).join(' · '), 'error');
+      }
     } catch {
-      setManifestStatus('error');
+      try {
+        const found = await invoke('check_lua_manifest', { appid: game.appid });
+        setManifestStatus(found ? 'found' : 'not_found');
+      } catch {
+        setManifestStatus('error');
+      }
     }
   };
 
