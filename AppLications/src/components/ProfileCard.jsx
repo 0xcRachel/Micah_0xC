@@ -69,11 +69,15 @@ const GameCard = ({
     if (!appid) return;
     setManifestStatus('checking');
     try {
-      // Premium check: lua + manifest cache + key (not just lua)
+      // Premium check: lua + manifest cache + key (not just lua).
+      // BUNDLE_AVAILABLE = no local Lua, but the house DB carries the game:
+      // offer one-click import instead of a flat not-found.
       const res = await invoke('check_install_ready', { appid });
       // res: { ready, lua_present, state, blockers }
       if (res.ready) {
         setManifestStatus('found');
+      } else if (!res.lua_present && res.state === 'BUNDLE_AVAILABLE') {
+        setManifestStatus('bundle');
       } else if (!res.lua_present) {
         setManifestStatus('not_found');
       } else {
@@ -426,6 +430,25 @@ const GameCard = ({
                 }}
               >
                 {downloading ? 'Importing...' : 'Download & Auto-Import (.lua)'}
+              </button>
+            )}
+            {manifestStatus === 'bundle' && (
+              <button
+                onClick={handleAutoImport}
+                disabled={downloading}
+                style={{
+                  background: '#c49a3a',
+                  color: '#fff',
+                  border: '1.5px solid var(--card-border)',
+                  borderRadius: '6px',
+                  padding: '3px 8px',
+                  fontSize: '9.5px',
+                  fontWeight: '800',
+                  cursor: downloading ? 'wait' : 'pointer',
+                  opacity: downloading ? 0.7 : 1
+                }}
+              >
+                {downloading ? 'Importing...' : 'Bundle found — Auto-Import (.lua)'}
               </button>
             )}
             {manifestStatus === 'not_found' && (

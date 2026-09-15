@@ -155,8 +155,11 @@ const ImagePreviewModal = ({ game, onClose }) => {
     if (!game.appid) return;
     setManifestStatus('checking');
     try {
+      // BUNDLE_AVAILABLE = no local Lua, but the house DB carries the game:
+      // offer one-click import instead of a flat not-found.
       const res = await invoke('check_install_ready', { appid: game.appid });
       if (res.ready) setManifestStatus('found');
+      else if (!res.lua_present && res.state === 'BUNDLE_AVAILABLE') setManifestStatus('bundle');
       else if (!res.lua_present) setManifestStatus('not_found');
       else {
         setManifestStatus('not_found');
@@ -561,6 +564,26 @@ const ImagePreviewModal = ({ game, onClose }) => {
                 }}
               >
                 {downloading ? 'Importing...' : 'Download & Auto-Import (.lua)'}
+              </button>
+            )}
+
+            {manifestStatus === 'bundle' && (
+              <button
+                onClick={handleAutoImport}
+                disabled={downloading}
+                style={{
+                  background: '#c49a3a',
+                  color: '#fff',
+                  border: '1.5px solid #c49a3a',
+                  borderRadius: '10px',
+                  padding: '8px 16px',
+                  fontSize: '11px',
+                  fontWeight: '800',
+                  cursor: downloading ? 'wait' : 'pointer',
+                  opacity: downloading ? 0.7 : 1,
+                }}
+              >
+                {downloading ? 'Importing...' : 'Bundle found — Auto-Import (.lua)'}
               </button>
             )}
 

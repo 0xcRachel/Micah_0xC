@@ -232,6 +232,7 @@ async fn auto_save_and_import_lua(
     appid: u32,
     game_name: String,
     lua_content: Option<String>,
+    node_base_url: Option<String>,
 ) -> CommandResult<manager::AutoImportResult> {
     manager::auto_save_and_import_lua(
         &app,
@@ -239,6 +240,7 @@ async fn auto_save_and_import_lua(
         appid,
         &game_name,
         lua_content.as_deref(),
+        node_base_url.as_deref(),
     )
     .await
 }
@@ -342,8 +344,9 @@ async fn install_status(
 async fn check_install_ready(
     steam_dir: Option<String>,
     appid: u32,
+    node_base_url: Option<String>,
 ) -> CommandResult<manager::InstallReadiness> {
-    manager::check_install_ready(steam_dir.as_deref(), appid).await
+    manager::check_install_ready(steam_dir.as_deref(), appid, node_base_url.as_deref()).await
 }
 
 /// Audit + repair one game's Lua end-to-end (pull missing Lua, merge missing
@@ -405,6 +408,7 @@ async fn download_from_openlua(
         appid,
         &game_name,
         Some(&lua_content),
+        None,
     )
     .await
 }

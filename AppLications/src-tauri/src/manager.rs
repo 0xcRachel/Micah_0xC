@@ -216,6 +216,18 @@ pub struct AutoImportResult {
     /// Live depots whose manifest no mirror carries yet.
     #[serde(default)]
     pub manifests_missing: Vec<u32>,
+    /// Depots needing house-DB/menu attention after import: empty pins,
+    /// pins absent from `/api/manifests`, or DB rows the Lua does not pin.
+    #[serde(default)]
+    pub manifests_db_missing: Vec<u32>,
+    /// Depots with a manifest pin but no decryption key in the Lua —
+    /// encrypted content stays locked until a key is added.
+    #[serde(default)]
+    pub no_key_depots: Vec<u32>,
+    /// True when the Lua came from the house `/api/Micah/bundle` endpoint
+    /// (single call: lua + depots + mirrors), not an external source.
+    #[serde(default)]
+    pub bundle_used: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1435,8 +1447,22 @@ pub async fn auto_save_and_import_lua(
     appid: u32,
     game_name: &str,
     lua_content: Option<&str>,
+    node_base_url: Option<&str>,
 ) -> Result<AutoImportResult> {
+    // House API base (param → MICAH_LUA_BASE env → production default) shared
+    // by the bundle fetch and the manifests verify below. 45 s covers Vercel
+    // cold starts (measured 9–15 s).
+    let base = resolve_node_base(node_base_url);
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(45))
+        .user_agent("Micah0xC/1.0")
+        .build()
+        .map_err(|err| err.to_string())?;
     // 0. Prepare per-script payloads: name hint + raw content.
+    // `bundle_used` / `house_depots` feed the verify step when the Lua came
+    // from the house bundle (no second API call needed then).
+    let mut bundle_used = false;
+    let mut house_depots: Vec<(u32, String, String)> = Vec::new();
     let scripts: Vec<(String, String)> = match lua_content {
         Some(content) => {
             let content = content.trim();
@@ -1446,11 +1472,49 @@ pub async fn auto_save_and_import_lua(
             vec![(format!("{appid}_{}.lua", sanitize_file_stem(game_name)), content.to_string())]
         }
         None => {
-            let files = fetch_manifest_lua_files(appid).await?;
-            if files.is_empty() {
-                return Err(format!("No .lua files found in the repository for AppID {appid}"));
+            // House API only: one bundle call carries lua + depots + mirrors.
+            // No external sources (steamtools/ManifestHub) on this path, and
+            // the bundle answers 200 + lua:null for unknown appids — so a
+            // usable script (not the status) is the not-in-DB signal.
+            let mut pulled: Option<String> = None;
+            if let Some(b) = fetch_bundle(&http, &base, appid).await {
+                if let Some(lua) = b.lua.as_deref() {
+                    if is_valid_lua_text(lua) {
+                        pulled = Some(lua.to_string());
+                        bundle_used = true;
+                        for dep in &b.depots {
+                            if let Ok(depot) = dep.depot_id.trim().parse::<u32>() {
+                                house_depots.push((
+                                    depot,
+                                    dep.depot_key.clone().unwrap_or_default(),
+                                    dep.manifest.clone().unwrap_or_default(),
+                                ));
+                            }
+                        }
+                    }
+                }
             }
-            files
+            if pulled.is_none() {
+                // Light fallback: the plain lua endpoint (same house API).
+                let url = format!("{}/api/Micah/lua/{}", base.trim_end_matches('/'), appid);
+                if let Ok(resp) = http.get(&url).send().await {
+                    if resp.status().is_success() {
+                        if let Ok(text) = resp.text().await {
+                            if is_valid_lua_text(&text) {
+                                pulled = Some(text);
+                            }
+                        }
+                    }
+                }
+            }
+            match pulled {
+                Some(text) => vec![(format!("{appid}.lua"), text)],
+                None => {
+                    return Err(format!(
+                        "Game {appid} chưa có trong DB micah-lua — bổ sung qua menu rồi thử lại"
+                    ))
+                }
+            }
         }
     };
 
@@ -1500,36 +1564,58 @@ pub async fn auto_save_and_import_lua(
     game.enabled = true;
     upsert_game_in_dir(&steam, &game)?;
 
-    // 3b. Best-effort manifest refresh so fresh installs pin CURRENT public
-    // gids instead of whatever the Lua repository shipped (stale gids 401 on
-    // download). Never fails the import: provider hiccups must not block
-    // adding games.
-    {
-        let steam_str = steam.to_string_lossy().into_owned();
-        // Best-effort only: refresh already rewrote both Lua copies when it
-        // found drift, and any error is silently ignored here.
-        let _ = tokio::time::timeout(
-            Duration::from_secs(25),
-            refresh_manifest_gids(app, Some(steam_str.as_str()), game.appid),
-        )
-        .await;
-    }
-
-    // 3c. Best-effort manifest seed so the game can actually DOWNLOAD:
-    // Lua alone only makes Steam show the game; without a cached manifest
-    // the CDN answers 401 for unowned games. Never fails the import.
-    let (manifests_seeded, manifests_missing) = {
-        let steam_str = steam.to_string_lossy().into_owned();
-        let seed_fut = seed_manifests(Some(steam_str.as_str()), game.appid, None);
-        match tokio::time::timeout(Duration::from_secs(120), seed_fut).await {
-            Ok(Ok(seed)) => {
-                let mut missing = seed.missing.clone();
-                missing.sort_unstable();
-                (seed.seeded.len() as u32, missing)
+    // 3b. Verify manifest/key coverage against the house DB — no downloads.
+    // When the Lua came from the bundle, its pins ARE fresh DB state, so the
+    // in-hand depot list is the reference (no second API call). Otherwise the
+    // pins are cross-checked against GET /api/manifests (best-effort: a 404
+    // or network error only widens the warning list, never fails the import).
+    // Missing keys/GIDs are reported, never fatal — cf. CS2/Elden Ring which
+    // ship keyless depots in the DB itself.
+    let pins: std::collections::HashMap<u32, String> = find_manifest_entries(first_content)
+        .into_iter()
+        .map(|e| (e.depot_id, e.manifest_gid))
+        .collect();
+    let keyed = keyed_depots_in_lua(first_content);
+    let mut no_key_depots: Vec<u32> = pins
+        .keys()
+        .filter(|d| !keyed.contains(d))
+        .copied()
+        .collect();
+    no_key_depots.sort_unstable();
+    let mut manifests_db_missing: Vec<u32> = pins
+        .iter()
+        .filter(|(_, gid)| gid.trim().is_empty())
+        .map(|(d, _)| *d)
+        .collect();
+    if bundle_used {
+        let house: std::collections::HashMap<u32, String> = house_depots
+            .into_iter()
+            .filter(|(_, _, m)| !m.trim().is_empty())
+            .map(|(d, _, m)| (d, m))
+            .collect();
+        // DB rows the Lua does not pin: the script is incomplete for them.
+        for depot in house.keys() {
+            if !pins.contains_key(depot) && !manifests_db_missing.contains(depot) {
+                manifests_db_missing.push(*depot);
             }
-            Ok(Err(_)) | Err(_) => (0, Vec::new()),
         }
-    };
+    } else if let Some(rows) = fetch_house_manifests(&http, &base, game.appid).await {
+        let house: std::collections::HashMap<u32, String> = rows.into_iter().collect();
+        for depot in pins.keys() {
+            if !house.contains_key(depot) && !manifests_db_missing.contains(depot) {
+                manifests_db_missing.push(*depot);
+            }
+        }
+    } else {
+        // House DB has nothing for this app: every pinned depot counts as
+        // DB-missing so the menu backfill can pick it up.
+        for depot in pins.keys() {
+            if !manifests_db_missing.contains(depot) {
+                manifests_db_missing.push(*depot);
+            }
+        }
+    }
+    manifests_db_missing.sort_unstable();
 
     let steam_import_path = display_path(
         steam.join("config").join("lua").join(game_file_name(game.appid, true)),
@@ -1546,8 +1632,11 @@ pub async fn auto_save_and_import_lua(
         steam_import_path: Some(steam_import_path),
         lua_scripts_dir: display_path(scripts_dir),
         imported: true,
-        manifests_seeded,
-        manifests_missing,
+        manifests_seeded: 0,
+        manifests_missing: Vec::new(),
+        manifests_db_missing,
+        no_key_depots,
+        bundle_used,
     })
 }
 
@@ -1556,7 +1645,82 @@ pub async fn auto_save_and_import_lua(
 fn micah_lua_api_base() -> String {
     dotenvy::dotenv().ok();
     std::env::var("MICAH_LUA_API_BASE")
-        .unwrap_or_else(|_| "https://micah-lua.vercel.app/api/micah/lua".to_string())
+        .unwrap_or_else(|_| "https://micah-lua.vercel.app/api/Micah/lua".to_string())
+}
+
+/// Origin of the house Micah Lua web API (bundle + lua + manifests).
+/// Override via `MICAH_LUA_BASE` in `.env`. Never includes a path suffix.
+fn micah_lua_origin() -> String {
+    dotenvy::dotenv().ok();
+    std::env::var("MICAH_LUA_BASE")
+        .ok()
+        .map(|s| s.trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "https://micah-lua.vercel.app".to_string())
+}
+
+/// Effective house-API base URL: an explicit param wins, otherwise the
+/// `MICAH_LUA_BASE` env (or production default). Callers always get a usable
+/// base — the frontend may pass None and still use the house API.
+fn resolve_node_base(node_base_url: Option<&str>) -> String {
+    match node_base_url.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(base) => base.trim_end_matches('/').to_string(),
+        None => micah_lua_origin(),
+    }
+}
+
+/// True when a Lua text looks like a real game script (not an error page).
+fn is_valid_lua_text(text: &str) -> bool {
+    let t = text.trim();
+    !t.is_empty() && t.contains("addappid(")
+}
+
+/// Parse a depot id that may be encoded as a JSON string ("242761")
+/// or a JSON number (242761). Used by the house `/api/manifests` shape.
+fn json_u32(v: &serde_json::Value) -> Option<u32> {
+    if let Some(s) = v.as_str() {
+        if let Ok(n) = s.trim().parse::<u32>() {
+            return Some(n);
+        }
+    }
+    v.as_u64().and_then(|n| u32::try_from(n).ok())
+}
+
+/// Depot manifest GIDs from the house API (`GET /api/manifests/[appid]`).
+/// New shape: `{depots: [{depot_id, manifest, size, branch}]}`.
+/// Returns None on 404 (nothing in DB and Steam has no public manifest),
+/// network error, or an empty list. Never throws.
+async fn fetch_house_manifests(
+    client: &reqwest::Client,
+    base: &str,
+    appid: u32,
+) -> Option<Vec<(u32, String)>> {
+    let url = format!("{}/api/manifests/{}", base.trim_end_matches('/'), appid);
+    let resp = client.get(&url).send().await.ok()?;
+    if !resp.status().is_success() {
+        return None;
+    }
+    let body: serde_json::Value = resp.json().await.ok()?;
+    let arr = body.get("depots")?.as_array()?;
+    let mut out = Vec::new();
+    for row in arr {
+        let depot = row.get("depot_id").and_then(json_u32);
+        let manifest = row
+            .get("manifest")
+            .and_then(|v| v.as_str())
+            .map(str::trim)
+            .unwrap_or_default();
+        if let Some(d) = depot {
+            if !manifest.is_empty() {
+                out.push((d, manifest.to_string()));
+            }
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out)
+    }
 }
 
 /// Check whether a Lua script exists for the given AppID on the internal
@@ -3350,6 +3514,53 @@ async fn resolve_mirror_urls(
         let url = format!("{}/api/public/manifests/{}", base.trim_end_matches('/'), appid);
         if let Ok(resp) = client.get(&url).send().await {
             if let Ok(body) = resp.json::<serde_json::Value>().await {
+                // New house shape (via 307 redirect): {depots: [{depot_id,
+                // manifest, size, branch}]}. The DB only carries GIDs, so a
+                // candidate raw URL is HEAD-checked once before use.
+                if let Some(arr) = body.get("depots").and_then(|v| v.as_array()) {
+                    let mut gids: std::collections::HashMap<u32, String> =
+                        std::collections::HashMap::new();
+                    for row in arr {
+                        let depot = row.get("depot_id").and_then(json_u32);
+                        let manifest = row
+                            .get("manifest")
+                            .and_then(|v| v.as_str())
+                            .map(str::trim)
+                            .unwrap_or_default();
+                        if let Some(d) = depot {
+                            if !manifest.is_empty() {
+                                gids.insert(d, manifest.to_string());
+                            }
+                        }
+                    }
+                    if !gids.is_empty() {
+                        let mut out = Vec::new();
+                        for (depot_id, gid) in live {
+                            let candidate = gids
+                                .get(depot_id)
+                                .filter(|g| *g == gid)
+                                .map(|g| hub3_raw_url(appid, *depot_id, g))
+                                .unwrap_or_default();
+                            let url = if candidate.is_empty() {
+                                String::new()
+                            } else {
+                                let ok = client
+                                    .head(&candidate)
+                                    .send()
+                                    .await
+                                    .map(|r| r.status().is_success())
+                                    .unwrap_or(false);
+                                if ok {
+                                    candidate
+                                } else {
+                                    String::new()
+                                }
+                            };
+                            out.push((*depot_id, gid.clone(), url));
+                        }
+                        return out;
+                    }
+                }
                 if let Some(map) = body.get("manifests").and_then(|m| m.as_object()) {
                     let mut out = Vec::new();
                     for (depot_id, gid) in live {
@@ -3668,9 +3879,13 @@ pub struct InstallReadiness {
 /// One call answering "can this game actually install right now?"
 /// Combines the Lua check (old check_lua_manifest only asked the Lua API)
 /// with local manifest-cache coverage from install_status.
+/// When no local Lua exists, the house bundle is consulted first: a game the
+/// web DB carries (lua + manifests) reports `BUNDLE_AVAILABLE` instead of a
+/// flat not-found, so the UI can offer one-click import.
 pub async fn check_install_ready(
     steam_dir: Option<&str>,
     appid: u32,
+    node_base_url: Option<&str>,
 ) -> Result<InstallReadiness> {
     if appid == 0 {
         return Err("AppId must be greater than zero".into());
@@ -3678,8 +3893,28 @@ pub async fn check_install_ready(
     let steam = resolve_steam_dir_opt(steam_dir)?;
     let lua_present = lua_dir(&steam).join(format!("G-{appid}.lua")).exists();
     let mut blockers = Vec::new();
+    // No local Lua: ask the house bundle before calling it missing.
+    let mut bundle_available = false;
     if !lua_present {
-        blockers.push(format!("G-{appid}.lua not found — import Lua first"));
+        let base = resolve_node_base(node_base_url);
+        let client = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .user_agent("Micah0xC/1.0")
+            .build()
+            .map_err(|err| err.to_string())?;
+        match fetch_bundle(&client, &base, appid).await {
+            Some(b) if b.lua.as_deref().map(is_valid_lua_text).unwrap_or(false) => {
+                bundle_available = true;
+            }
+            Some(_) => {
+                blockers.push(format!(
+                    "G-{appid}.lua not found — game chưa có trong DB micah-lua"
+                ));
+            }
+            None => {
+                blockers.push(format!("G-{appid}.lua not found — import Lua first"));
+            }
+        }
     }
     let status = install_status(Some(&steam.to_string_lossy()), appid).await;
     let (state, ready) = match status {
@@ -3706,6 +3941,18 @@ pub async fn check_install_ready(
             blockers.push(format!("status check failed: {e}"));
             ("UNKNOWN".to_string(), false)
         }
+    };
+    // Bundle hit overrides the state: local files say "missing", but the
+    // house DB can materialize the Lua on demand — actionable, not dead.
+    let (state, blockers) = if bundle_available && !lua_present {
+        (
+            "BUNDLE_AVAILABLE".to_string(),
+            vec![format!(
+                "Bundle có sẵn trên micah-lua (Lua + manifest) — bấm Restore/Auto-Import để tạo G-{appid}.lua"
+            )],
+        )
+    } else {
+        (state, blockers)
     };
     Ok(InstallReadiness {
         appid,
@@ -5960,8 +6207,9 @@ mod tests {
         assert!(added_again.is_empty());
     }
 
-    // Live-network test: temp Steam dir without Lua → never ready,
-    // always names the missing Lua as a blocker (network outcome agnostic).
+    // Live-network test: temp Steam dir without Lua → never ready.
+    // node_base_url points at a dead port so the bundle fallback fails fast
+    // and the assertion stays network-outcome agnostic.
     #[test]
     fn check_install_ready_without_lua_is_blocked() {
         let rt = tokio::runtime::Builder::new_current_thread()
@@ -5974,6 +6222,7 @@ mod tests {
             let rep = check_install_ready(
                 Some(steam.to_string_lossy().as_ref()),
                 424840,
+                Some("http://127.0.0.1:1"),
             )
             .await
             .expect("check must not error on a valid dir");

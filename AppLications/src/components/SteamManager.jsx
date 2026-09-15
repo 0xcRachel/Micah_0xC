@@ -504,9 +504,15 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
     try {
       const res = await api.autoSaveAndImportLua(Number(cg.app_id), cloudGameName(cg), { steamDir });
       const bits = [`Restored ${cloudGameName(cg)}!`];
+      if (res.bundle_used) bits.push('Lua from micah-lua bundle');
       if (res.manifests_seeded) bits.push(`${res.manifests_seeded} manifest(s) seeded`);
+      const dbMissing = res.manifests_db_missing ?? [];
+      const noKey = res.no_key_depots ?? [];
+      if (dbMissing.length) bits.push(`DB thiếu manifest depot ${dbMissing.join(', ')} — bổ sung qua menu`);
+      if (noKey.length) bits.push(`thiếu key depot ${noKey.join(', ')} — nội dung mã hóa vẫn khóa`);
       if (res.manifests_missing.length) bits.push(`mirror lacks depots ${res.manifests_missing.join(', ')} — download will 401`);
-      show(bits.join(' · '), res.manifests_missing.length ? 'error' : 'success');
+      const hasWarnings = dbMissing.length + noKey.length + res.manifests_missing.length > 0;
+      show(bits.join(' · '), hasWarnings ? 'error' : 'success');
       await refreshGames();
     } catch (e) {
       toastError(show, `Restore ${cloudGameName(cg)}`, e);

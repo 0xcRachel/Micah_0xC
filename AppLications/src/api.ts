@@ -195,6 +195,12 @@ export interface AutoImportResult {
   imported: boolean;
   manifests_seeded: number;
   manifests_missing: number[];
+  /** Depots needing house-DB/menu attention (empty pins / absent from /api/manifests) */
+  manifests_db_missing?: number[];
+  /** Depots with a manifest pin but no decryption key in the Lua */
+  no_key_depots?: number[];
+  /** True when the Lua came from the house /api/Micah/bundle endpoint */
+  bundle_used?: boolean;
 }
 
 export interface InstallReadiness {
@@ -211,29 +217,33 @@ export interface InstallReadiness {
  */
 export const checkInstallReady = (
   appid: number,
-  opts?: { steamDir?: string },
+  opts?: { steamDir?: string; nodeBaseUrl?: string },
 ): Promise<InstallReadiness> =>
   invoke<InstallReadiness>('check_install_ready', {
     appid,
     steamDir: opts?.steamDir ?? null,
+    nodeBaseUrl: opts?.nodeBaseUrl ?? null,
   });
 
 /**
  * Auto-save a Lua script into the app's fixed `lua_scripts` folder and import
  * it into Steam's Lua directory that Micah_Mode.dll watches. `luaContent` is
- * optional — when omitted the script is fetched from the internal Micah Lua
- * API. `steamDir` is optional too; it is auto-detected when not provided.
+ * optional — when omitted the script is fetched from the house micah-lua
+ * bundle API (`/api/Micah/bundle`) and verified against `/api/manifests`.
+ * `nodeBaseUrl` is optional too; the backend falls back to MICAH_LUA_BASE env.
+ * `steamDir` is optional; it is auto-detected when not provided.
  */
 export const autoSaveAndImportLua = (
   appid: number,
   gameName: string,
-  opts?: { steamDir?: string; luaContent?: string },
+  opts?: { steamDir?: string; luaContent?: string; nodeBaseUrl?: string },
 ): Promise<AutoImportResult> =>
   invoke<AutoImportResult>('auto_save_and_import_lua', {
     appid,
     gameName,
     steamDir: opts?.steamDir ?? null,
     luaContent: opts?.luaContent ?? null,
+    nodeBaseUrl: opts?.nodeBaseUrl ?? null,
   });
 
 /** Path of the app's fixed `lua_scripts` folder */
