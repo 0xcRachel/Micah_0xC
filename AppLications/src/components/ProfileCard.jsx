@@ -3,6 +3,7 @@ import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { invoke } from '@tauri-apps/api/core';
 import { Toast, useToast } from './Toast';
+import SteamImage, { steamImageCandidates } from './SteamImage';
 
 // Register GSAP hook
 gsap.registerPlugin(useGSAP);
@@ -12,6 +13,34 @@ gsap.registerPlugin(useGSAP);
  */
 const scoreColor = (s) =>
   s >= 80 ? 'var(--led-color)' : s >= 60 ? '#c49a3a' : '#b85040';
+
+// Warm the first few cover candidates while the old card animates out, so the
+// swap lands on a decoded frame instead of an empty image box.
+const preloadCardImage = (appid, src, timeout = 700) => {
+  const candidates = steamImageCandidates(appid, src).slice(0, 3);
+  if (!candidates.length) return Promise.resolve();
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+    const done = () => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve();
+    };
+    timer = setTimeout(done, timeout);
+    let pending = candidates.length;
+    for (const url of candidates) {
+      const img = new Image();
+      img.onload = done;
+      img.onerror = () => {
+        pending -= 1;
+        if (pending === 0) done();
+      };
+      img.src = url;
+    }
+  });
+};
 
 const GameCard = ({
   title      = 'Game Title',
@@ -45,6 +74,8 @@ const GameCard = ({
 
   const cardRef = useRef(null);
   const firstUpdate = useRef(true);
+  const transitionRef = useRef(null);
+  const transitionTokenRef = useRef(0);
   const [manifestStatus, setManifestStatus] = useState('idle'); // idle, checking, found, not_found, error
   const [downloading, setDownloading] = useState(false);
   const { toast, show } = useToast();
@@ -104,33 +135,55 @@ const GameCard = ({
   const sColor = hasScore ? scoreColor(sc) : '#b0aca4';
   const visibleTags = displayGame.tags.slice(0, 3);
 
-  // GSAP out-and-in transition animation when game props update
+  // GSAP out-and-in transition when game props update. The new cover is
+  // preloaded while the old card animates out, so the swap never flashes an
+  // empty image frame; a token cancels stale async work on rapid picks.
   useGSAP(() => {
     if (firstUpdate.current) {
       firstUpdate.current = false;
       return;
     }
 
-    const tlOut = gsap.timeline({
-      onComplete: () => {
-        setDisplayGame({
-          title: currentTitle,
-          developer: currentDev,
-          imageSrc,
-          score,
-          scoreLabel,
-          price,
-          tags
-        });
+    const token = ++transitionTokenRef.current;
+    const isCurrent = () => token === transitionTokenRef.current;
+    let alive = true;
 
-        const tlIn = gsap.timeline({ defaults: { ease: 'power3.out' } });
-        tlIn.fromTo(cardRef.current, { scale: 0.98 }, { scale: 1, duration: 0.3 });
-        tlIn.fromTo('.left-panel', { opacity: 0, x: -10 }, { opacity: 1, x: 0, duration: 0.35 });
-        tlIn.fromTo('.score-ring', { scale: 0.7, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: 'back.out(1.4)' }, '-=0.2');
-        tlIn.fromTo('.game-image-container', { y: 10, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4 }, '-=0.25');
-        tlIn.fromTo('.info-element', { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: 0.35, stagger: 0.04 }, '-=0.25');
-      }
+    transitionRef.current?.kill();
+
+    const nextGame = {
+      title: currentTitle,
+      developer: currentDev,
+      imageSrc,
+      score,
+      scoreLabel,
+      price,
+      tags,
+    };
+    const coverReady = preloadCardImage(appid, imageSrc);
+
+    const tlOut = gsap.timeline({
+      defaults: { overwrite: 'auto' },
+      onComplete: async () => {
+        await coverReady;
+        if (!alive || !isCurrent()) return;
+        setDisplayGame(nextGame);
+
+        // Wait one frame so React paints the new cover before animating in.
+        requestAnimationFrame(() => {
+          if (!alive || !isCurrent()) return;
+          const card = cardRef.current;
+          if (!card) return;
+          const tlIn = gsap.timeline({ defaults: { ease: 'power3.out', overwrite: 'auto' } });
+          transitionRef.current = tlIn;
+          tlIn.fromTo(card, { scale: 0.99 }, { scale: 1, duration: 0.32 });
+          tlIn.fromTo(card.querySelector('.left-panel'), { opacity: 0, x: -10 }, { opacity: 1, x: 0, duration: 0.35 });
+          tlIn.fromTo(card.querySelector('.score-ring'), { scale: 0.7, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.45, ease: 'back.out(1.4)' }, '-=0.2');
+          tlIn.fromTo(card.querySelector('.game-image-container'), { y: 10, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4 }, '-=0.25');
+          tlIn.fromTo(card.querySelectorAll('.info-element'), { y: 8, opacity: 0 }, { y: 0, opacity: 1, duration: 0.35, stagger: 0.04 }, '-=0.25');
+        });
+      },
     });
+    transitionRef.current = tlOut;
 
     tlOut.to('.info-element', { y: -8, opacity: 0, duration: 0.15, stagger: 0.02 });
     tlOut.to('.game-image-container', { y: -10, opacity: 0, duration: 0.15 }, '-=0.1');
@@ -138,7 +191,11 @@ const GameCard = ({
     tlOut.to('.left-panel', { opacity: 0, x: -10, duration: 0.2 }, '-=0.1');
     tlOut.to(cardRef.current, { scale: 0.98, duration: 0.2 }, '-=0.15');
 
-  }, { dependencies: [currentTitle, currentDev, imageSrc, score, scoreLabel, price, tags], scope: cardRef });
+    return () => {
+      alive = false;
+      transitionRef.current?.kill();
+    };
+  }, { dependencies: [currentTitle, currentDev, imageSrc, score, scoreLabel, price, tags, appid], scope: cardRef });
 
   // Initial mount animations
   useGSAP(() => {
@@ -271,8 +328,9 @@ const GameCard = ({
           transition: 'border-color 0.15s, background-color 0.15s',
         }}
       >
-        {displayGame.imageSrc ? (
-          <img
+        {(displayGame.imageSrc || appid) ? (
+          <SteamImage
+            appid={appid}
             src={displayGame.imageSrc}
             alt={displayGame.title}
             style={{
@@ -281,6 +339,27 @@ const GameCard = ({
               objectFit: 'cover',
               display: 'block',
             }}
+            fallback={
+              <div style={{
+                width: '100%',
+                height: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--text-muted)',
+                fontSize: '11px',
+                flexDirection: 'column',
+                gap: '6px',
+              }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+                  stroke="#c4b99a" strokeWidth="1.8">
+                  <rect x="3" y="3" width="18" height="18" rx="3"/>
+                  <circle cx="8.5" cy="8.5" r="1.5"/>
+                  <path d="M21 15l-5-5L5 21"/>
+                </svg>
+                <span>No Image</span>
+              </div>
+            }
           />
         ) : (
           <div style={{

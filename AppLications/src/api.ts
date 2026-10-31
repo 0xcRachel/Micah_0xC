@@ -367,6 +367,59 @@ export const installStatus = (
     steamDir: opts?.steamDir ?? null,
   });
 
+export interface AutoFixReport {
+  appid: number;
+  steps: string[];
+  warnings: string[];
+  acf_removed: boolean;
+  acf_backup: string;
+  pins_cleaned: number;
+  seeded: number[];
+  already_cached: number[];
+  missing: number[];
+  no_key: number[];
+  next_step: string;
+}
+
+/**
+ * One-click repair for the 0%-then-back-to-download loop: backs up + removes
+ * a stuck appmanifest (refuses live downloads), purges junk Lua pins, then
+ * re-seeds manifests. `next_step` tells the user what to press in Steam.
+ */
+export const autoFixDownload = (
+  appid: number,
+  opts?: { steamDir?: string; nodeBaseUrl?: string },
+): Promise<AutoFixReport> =>
+  invoke<AutoFixReport>('auto_fix_download', {
+    appid,
+    steamDir: opts?.steamDir ?? null,
+    nodeBaseUrl: opts?.nodeBaseUrl ?? null,
+  });
+
+/**
+ * Save pasted manifest request codes (`depot: code` lines, one per line)
+ * for the DLL to prefer over every provider. Codes die in ~5 minutes —
+ * paste fresh ones and press Install in Steam immediately.
+ * Returns the merged pair count.
+ */
+export const saveManifestCodeOverrides = (
+  steamDir: string,
+  text: string,
+): Promise<number> =>
+  invoke<number>('save_manifest_code_overrides', { steamDir, text });
+
+/** Current overrides file content (pretty JSON, `"{}"` when absent). */
+export const readManifestCodeOverrides = (
+  steamDir: string,
+): Promise<string> =>
+  invoke<string>('read_manifest_code_overrides', { steamDir });
+
+/** Delete the overrides file (stops using pasted codes). */
+export const clearManifestCodeOverrides = (
+  steamDir: string,
+): Promise<void> =>
+  invoke<void>('clear_manifest_code_overrides', { steamDir });
+
 export interface FixLuaReport {
   appid: number;
   steps: string[];
@@ -414,9 +467,9 @@ export const onRefreshManifestsProgress = (
 ): Promise<UnlistenFn> =>
   listen<FixLuaProgress>('refresh-manifests-progress', (e) => cb(e.payload));
 
-/** Delete a game's .lua file */
-export const deleteGame = (steamDir: string, appid: number): Promise<void> =>
-  invoke<void>('delete_game', { steamDir, appid });
+/** Delete a game: removes the Micah Lua AND the Steam appmanifest (backed up). Returns a summary. */
+export const deleteGame = (steamDir: string, appid: number): Promise<string> =>
+  invoke<string>('delete_game', { steamDir, appid });
 
 /** Rename the .lua file to enable/disable a game */
 export const setGameEnabled = (steamDir: string, appid: number, enabled: boolean): Promise<void> =>

@@ -4,12 +4,13 @@ use sha2::{Digest, Sha256};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashMap},
     ffi::OsStr,
     fs,
     io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
     process::Command,
+    sync::{Mutex, OnceLock},
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -163,6 +164,8 @@ pub struct SearchResult {
     pub appid: u32,
     pub name: String,
     pub header_image: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fallback_image: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1231,17 +1234,47 @@ pub fn upsert_game_in_dir<P: AsRef<Path>>(steam_dir: P, game: &GameConfig) -> Re
     .map_err(|err| err.to_string())
 }
 
-pub fn delete_game_from_dir<P: AsRef<Path>>(steam_dir: P, appid: u32) -> Result<()> {
+pub fn delete_game_from_dir<P: AsRef<Path>>(steam_dir: P, appid: u32) -> Result<String> {
     let steam_dir = validate_steam_dir(steam_dir)?;
+    let mut removed: Vec<String> = Vec::new();
+    // 1. Micah Lua (enabled + disabled variants) — stops the DLL from
+    // unlocking/showing the game on the next license refresh.
     let lua_dir = lua_dir(&steam_dir);
     for enabled in [true, false] {
         let path = lua_dir.join(game_file_name(appid, enabled));
         if path.exists() {
-            fs::remove_file(path).map_err(|err| err.to_string())?;
-            return Ok(());
+            fs::remove_file(&path).map_err(|err| err.to_string())?;
+            removed.push(display_path(&path));
         }
     }
-    Ok(())
+    // 2. Steam appmanifest — THIS is what keeps the game visible in the Steam
+    // library after the Lua is gone. Backup first, then remove. Game files in
+    // steamapps/common are intentionally kept (user removes them in Explorer
+    // if wanted); without the manifest Steam shows the game as uninstalled.
+    let acf = steam_dir
+        .join("steamapps")
+        .join(format!("appmanifest_{appid}.acf"));
+    if acf.exists() {
+        let backup_dir = steam_dir.join("micah_mode").join("backups");
+        fs::create_dir_all(&backup_dir).map_err(|e| format!("cannot create backups dir: {e}"))?;
+        let stamp = std::time::SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let backup = backup_dir.join(format!("appmanifest_{appid}.acf.delete.{stamp}.bak"));
+        fs::copy(&acf, &backup).map_err(|e| format!("backup failed: {e}"))?;
+        fs::remove_file(&acf).map_err(|e| format!("cannot remove appmanifest: {e}"))?;
+        removed.push(format!("appmanifest (backed up to {})", backup.display()));
+    }
+    if removed.is_empty() {
+        return Err(format!(
+            "appid {appid}: nothing managed found (no Lua, no appmanifest)"
+        ));
+    }
+    Ok(format!(
+        "deleted {} — restart Steam to refresh the library (game files in steamapps/common were kept)",
+        removed.join(", ")
+    ))
 }
 
 pub fn set_game_enabled_in_dir<P: AsRef<Path>>(
@@ -1463,7 +1496,7 @@ pub async fn auto_save_and_import_lua(
     // from the house bundle (no second API call needed then).
     let mut bundle_used = false;
     let mut house_depots: Vec<(u32, String, String)> = Vec::new();
-    let scripts: Vec<(String, String)> = match lua_content {
+    let mut scripts: Vec<(String, String)> = match lua_content {
         Some(content) => {
             let content = content.trim();
             if content.is_empty() {
@@ -1517,6 +1550,16 @@ pub async fn auto_save_and_import_lua(
             }
         }
     };
+
+    // 0b. Strip junk manifest pins (non-numeric GIDs / bad depots) from pulled
+    // scripts BEFORE persisting — Steam 401s on them and the download loops
+    // at 0%. Purged depots surface as missing in the verify step below.
+    for (_, content) in scripts.iter_mut() {
+        let (cleaned, removed) = purge_invalid_gid_pins(content);
+        if removed > 0 {
+            *content = cleaned;
+        }
+    }
 
     // 1. Persist each script into the fixed lua_scripts folder.
     let scripts_dir = lua_scripts_dir(app)?;
@@ -1584,13 +1627,13 @@ pub async fn auto_save_and_import_lua(
     no_key_depots.sort_unstable();
     let mut manifests_db_missing: Vec<u32> = pins
         .iter()
-        .filter(|(_, gid)| gid.trim().is_empty())
+        .filter(|(_, gid)| !is_valid_gid(gid))
         .map(|(d, _)| *d)
         .collect();
     if bundle_used {
         let house: std::collections::HashMap<u32, String> = house_depots
             .into_iter()
-            .filter(|(_, _, m)| !m.trim().is_empty())
+            .filter(|(_, _, m)| is_valid_gid(m))
             .map(|(d, _, m)| (d, m))
             .collect();
         // DB rows the Lua does not pin: the script is incomplete for them.
@@ -1711,7 +1754,8 @@ async fn fetch_house_manifests(
             .map(str::trim)
             .unwrap_or_default();
         if let Some(d) = depot {
-            if !manifest.is_empty() {
+            // Reject junk GIDs at ingress (backend CHECK not live yet).
+            if is_valid_gid(manifest) {
                 out.push((d, manifest.to_string()));
             }
         }
@@ -2271,7 +2315,7 @@ fn parse_legacy_game_lua(file_name: &str, text: &str) -> Option<GameConfig> {
     let manifest_gid = manifest_entries
         .first()
         .map(|entry| entry.manifest_gid.clone())
-        .or_else(|| find_first_quoted_arg(text, "setManifestid("));
+        .or_else(|| find_first_quoted_arg(text, "setManifestid(").filter(|gid| is_valid_gid(gid)));
 
     Some(GameConfig {
         appid,
@@ -2359,6 +2403,12 @@ fn find_manifest_entries(text: &str) -> Vec<ManifestEntry> {
         else {
             continue;
         };
+        // Single choke point: junk GIDs ("newgid999", "") or depot 0 are
+        // dropped here so auto_save verify, seed, install_status and health
+        // scans only ever see usable pins.
+        if depot_id == 0 || !is_valid_gid(&manifest_gid) {
+            continue;
+        };
         entries.push(ManifestEntry {
             depot_id,
             manifest_gid,
@@ -2415,6 +2465,55 @@ fn unquote_lua_string(value: &str) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
+}
+
+/// A manifest GID is usable only when it is all digits. Junk like
+/// "newgid999", "" or "0" 401s on Steam and leaves the download looping at
+/// 0% — it must never reach `G-*.lua` / `depotcache`. Mirrors the house
+/// `lib/validate.ts` semantics (backend CHECK constraints are not live yet,
+//  so the app defends here too).
+fn is_valid_gid(gid: &str) -> bool {
+    let gid = gid.trim();
+    !gid.is_empty() && gid != "0" && gid.chars().all(|c| c.is_ascii_digit())
+}
+
+/// Drop `setManifestid(depot,"junk")` lines whose depot is not a nonzero u32
+/// or whose GID is not usable. Valid pins pass through untouched.
+/// Returns (cleaned_text, removed_count).
+fn purge_invalid_gid_pins(text: &str) -> (String, usize) {
+    let mut out = String::with_capacity(text.len());
+    let mut removed = 0usize;
+    for line in text.lines() {
+        let calls = find_call_args(line, "setManifestid(");
+        let mut drop_line = false;
+        for args in &calls {
+            let parts = split_lua_args(args);
+            let depot_ok = parts
+                .first()
+                .and_then(|part| part.trim().parse::<u32>().ok())
+                .map(|depot| depot != 0)
+                .unwrap_or(false);
+            let gid_ok = parts
+                .get(1)
+                .and_then(|part| unquote_lua_string(part.trim()))
+                .map(|gid| is_valid_gid(&gid))
+                .unwrap_or(false);
+            if !depot_ok || !gid_ok {
+                drop_line = true;
+                break;
+            }
+        }
+        if drop_line && !calls.is_empty() {
+            removed += 1;
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if !text.ends_with('\n') && out.ends_with('\n') {
+        out.pop();
+    }
+    (out, removed)
 }
 
 fn find_first_quoted_arg(text: &str, marker: &str) -> Option<String> {
@@ -2730,50 +2829,320 @@ pub async fn fetch_app_metadata(appid: u32) -> Result<AppMetadata> {
 }
 
 pub async fn search_steam_games(query: &str) -> Result<Vec<SearchResult>> {
-    if query.trim().len() < 2 {
+    let q = query.trim();
+    if q.len() < 2 {
         return Ok(Vec::new());
     }
-    // Primary: CheapShark games API — reachable even where Steam domains are
-    // DNS-blocked. Returns steamAppID + external (name) + thumb.
-    // (CheapShark rejects generic User-Agents, so identify the client.)
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(8))
-        .user_agent("Micah0xC/1.0 (+https://github.com/0xcRachel/Micah_0xC)")
-        .build()
-        .map_err(|err| err.to_string())?;
+    let client = store_client();
+    // Fast path: pure AppID (users here think in appids). Store name first
+    // (exact), SteamSpy name as fallback (works where store is blocked).
+    if let Ok(appid) = q.parse::<u32>() {
+        if appid > 0 {
+            let (name, image) = tokio::join!(
+                fetch_store_app_name(&client, appid),
+                steamcmd_image_for(&client, appid),
+            );
+            let header_image = image.unwrap_or_else(|| header_image_for(appid));
+            if let Some(name) = name {
+                return Ok(vec![SearchResult {
+                    appid,
+                    name,
+                    header_image,
+                    fallback_image: None,
+                }]);
+            }
+            if let Ok(meta) = fetch_app_metadata(appid).await {
+                return Ok(vec![SearchResult {
+                    appid,
+                    name: meta.name,
+                    header_image,
+                    fallback_image: None,
+                }]);
+            }
+            return Ok(Vec::new());
+        }
+    }
+    // Title path: CheapShark + Community in PARALLEL, merged + deduped.
+    // Community (Steam-official ranking) first, CheapShark fills deal-title gaps.
+    let (cheap, community) = tokio::join!(
+        fetch_cheapshark_results(&client, q),
+        fetch_community_results(&client, q),
+    );
+    let mut seen = std::collections::HashSet::new();
+    let mut merged = Vec::new();
+    for result in community.into_iter().chain(cheap.into_iter()) {
+        if seen.insert(result.appid) {
+            merged.push(result);
+            if merged.len() >= 10 {
+                break;
+            }
+        }
+    }
+    enrich_result_images(&client, &mut merged).await;
+    let needle = q.to_lowercase();
+    merged.sort_by_key(|r| !r.name.to_lowercase().starts_with(&needle));
+    Ok(merged)
+}
+
+/// Shared HTTP client (connection reuse — previously every keystroke built a
+/// new client). Per-request UA/timeout overrides preserve each API's needs.
+fn store_client() -> reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT
+        .get_or_init(|| {
+            reqwest::Client::builder()
+                .timeout(Duration::from_secs(10))
+                .user_agent("Micah0xC/1.0 (+https://github.com/0xcRachel/Micah_0xC)")
+                .build()
+                .expect("shared http client")
+        })
+        .clone()
+}
+
+const MOZILLA_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36";
+
+fn header_image_for(appid: u32) -> String {
+    format!(
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg"
+    )
+}
+
+/// SteamCMD exposes localized asset paths, often with a content-hash folder
+/// (`<hash>/header.jpg`). The un-hashed URL 404s for many newer apps.
+fn localized_asset(value: Option<&Value>) -> Option<String> {
+    let value = value?;
+    if let Some(text) = value.as_str() {
+        let text = text.trim();
+        if !text.is_empty() {
+            return Some(text.to_string());
+        }
+    }
+    let object = value.as_object()?;
+    for key in ["english", "en", "schinese", "tchinese", "japanese"] {
+        if let Some(text) = object.get(key).and_then(Value::as_str) {
+            let text = text.trim();
+            if !text.is_empty() {
+                return Some(text.to_string());
+            }
+        }
+    }
+    object.values().find_map(|candidate| {
+        let text = candidate.as_str()?.trim();
+        (!text.is_empty()).then(|| text.to_string())
+    })
+}
+
+fn steam_store_asset_url(appid: u32, relative: &str) -> String {
+    if relative.starts_with("http://") || relative.starts_with("https://") {
+        return relative.to_string();
+    }
+    format!(
+        "https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/{appid}/{}",
+        relative.trim_start_matches('/')
+    )
+}
+
+fn steamcmd_exact_image(appid: u32, common: &Value) -> Option<String> {
+    let relative = localized_asset(common.get("header_image"))
+        .or_else(|| localized_asset(common.pointer("/library_assets_full/library_header/image")))
+        .or_else(|| localized_asset(common.pointer("/library_assets_full/library_capsule/image")))
+        .or_else(|| localized_asset(common.get("small_capsule")))?;
+    Some(steam_store_asset_url(appid, &relative))
+}
+
+/// Fetch one app's SteamCMD `common` block (None on failure/unknown app).
+async fn steamcmd_common(client: &reqwest::Client, appid: u32) -> Option<Value> {
+    let url = format!("https://api.steamcmd.net/v1/info/{appid}");
+    let response = client
+        .get(&url)
+        .header(reqwest::header::USER_AGENT, MOZILLA_UA)
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let value: Value = response.json().await.ok()?;
+    value
+        .get("data")
+        .and_then(|data| data.get(appid.to_string()))
+        .and_then(|app| app.get("common"))
+        .cloned()
+}
+
+/// Parent game for DLC / tool / demo / benchmark entries that have no artwork.
+fn steamcmd_parent(common: &Value, appid: u32) -> Option<u32> {
+    if let Some(parent) = common
+        .get("parent")
+        .and_then(Value::as_str)
+        .and_then(|value| value.trim().parse::<u32>().ok())
+    {
+        if parent != appid {
+            return Some(parent);
+        }
+    }
+    let kind = common
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if kind != "game" {
+        if let Some(gameid) = common
+            .get("gameid")
+            .and_then(Value::as_str)
+            .and_then(|value| value.trim().parse::<u32>().ok())
+        {
+            if gameid != appid {
+                return Some(gameid);
+            }
+        }
+    }
+    None
+}
+
+/// Last-resort square art (logo/clienticon/icon) served by the community CDN.
+/// Steam uses a different extension per field: logo=.png, icon=.jpg,
+/// clienticon=.ico. Using `.jpg` for everything makes the clienticon 404.
+fn steamcmd_community_icon(appid: u32, common: &Value) -> Option<String> {
+    for (key, ext) in [("logo", "png"), ("icon", "jpg"), ("clienticon", "ico")] {
+        if let Some(hash) = common
+            .get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return Some(format!(
+                "https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/apps/{appid}/{hash}.{ext}"
+            ));
+        }
+    }
+    None
+}
+
+/// Fetch the exact header/cover from SteamCMD once per app.
+/// SteamCMD is reachable where store.steampowered.com is blocked, and returns
+/// the content-hash path required by newer apps. DLC/tools that only have a
+/// parent get the parent game's cover so the card is never empty.
+async fn steamcmd_image_for(client: &reqwest::Client, appid: u32) -> Option<String> {
+    static CACHE: OnceLock<Mutex<HashMap<u32, Option<String>>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(guard) = cache.lock() {
+        if let Some(cached) = guard.get(&appid) {
+            return cached.clone();
+        }
+    }
+
+    let common = steamcmd_common(client, appid).await;
+    let mut resolved = common
+        .as_ref()
+        .and_then(|common| steamcmd_exact_image(appid, common));
+
+    if resolved.is_none() {
+        if let Some(common) = common.as_ref() {
+            if let Some(parent) = steamcmd_parent(common, appid) {
+                if let Some(parent_common) = steamcmd_common(client, parent).await {
+                    resolved = steamcmd_exact_image(parent, &parent_common)
+                        .or_else(|| steamcmd_community_icon(parent, &parent_common));
+                }
+            }
+        }
+    }
+    if resolved.is_none() {
+        if let Some(common) = common.as_ref() {
+            resolved = steamcmd_community_icon(appid, common);
+        }
+    }
+
+    if let Ok(mut guard) = cache.lock() {
+        guard.insert(appid, resolved.clone());
+    }
+    resolved
+}
+
+/// Search results are built before the exact image is known. Enrich them in
+/// parallel (one SteamCMD request per app), keeping the source thumbnail as a
+/// fallback when SteamCMD has no image.
+async fn enrich_result_images(client: &reqwest::Client, results: &mut [SearchResult]) {
+    if results.is_empty() {
+        return;
+    }
+    let mut tasks = tokio::task::JoinSet::new();
+    for (index, result) in results.iter().enumerate() {
+        let client = client.clone();
+        let appid = result.appid;
+        tasks.spawn(async move { (index, steamcmd_image_for(&client, appid).await) });
+    }
+    while let Some(joined) = tasks.join_next().await {
+        if let Ok((index, Some(image))) = joined {
+            if let Some(result) = results.get_mut(index) {
+                result.header_image = image;
+            }
+        }
+    }
+}
+
+/// Store-API app name, slimmed to the name field. None when blocked/unknown.
+async fn fetch_store_app_name(client: &reqwest::Client, appid: u32) -> Option<String> {
+    let url = format!(
+        "https://store.steampowered.com/api/appdetails?appids={appid}&filters=name"
+    );
+    let value: Value = client
+        .get(&url)
+        .header(reqwest::header::USER_AGENT, MOZILLA_UA)
+        .timeout(Duration::from_secs(6))
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+    value
+        .get(&appid.to_string())?
+        .get("data")?
+        .get("name")?
+        .as_str()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
+/// CheapShark title search (reachable even where Steam domains are blocked).
+async fn fetch_cheapshark_results(client: &reqwest::Client, query: &str) -> Vec<SearchResult> {
+    // (CheapShark rejects generic User-Agents, so the shared Micah UA stays.)
     let cheap_url = format!(
         "https://www.cheapshark.com/api/1.0/games?title={}&limit=10",
         urlencoding::encode(query)
     );
     if let Ok(resp) = client.get(&cheap_url).send().await {
         if let Ok(value) = resp.json::<Value>().await {
-            let results = parse_cheapshark_results(&value, query);
-            if !results.is_empty() {
-                return Ok(results);
-            }
+            return parse_cheapshark_results(&value, query);
         }
     }
-    // Fallback: Steam Community SearchApps API (works where not blocked)
+    Vec::new()
+}
+
+/// Steam Community SearchApps (official ranking, works where not blocked).
+async fn fetch_community_results(client: &reqwest::Client, query: &str) -> Vec<SearchResult> {
     let url = format!(
         "https://steamcommunity.com/actions/SearchApps/{}",
         urlencoding::encode(query)
     );
-    let community_client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(8))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        .build()
-        .map_err(|err| err.to_string())?;
-    let value: Value = community_client
+    let value: Value = match client
         .get(&url)
+        .header(reqwest::header::USER_AGENT, MOZILLA_UA)
+        .timeout(Duration::from_secs(8))
         .send()
         .await
-        .map_err(|err| format!("Steam search request failed: {err}"))?
-        .json()
-        .await
-        .map_err(|err| format!("Steam search parse failed: {err}"))?;
+    {
+        Ok(resp) => match resp.json().await {
+            Ok(value) => value,
+            Err(_) => return Vec::new(),
+        },
+        Err(_) => return Vec::new(),
+    };
     let items = value.as_array().cloned().unwrap_or_default();
     let mut results = Vec::new();
-    for item in items.into_iter().take(8) {
+    for item in items.into_iter().take(10) {
         // appid comes as a string from this API
         let appid: u32 = item
             .get("appid")
@@ -2785,24 +3154,22 @@ pub async fn search_steam_games(query: &str) -> Result<Vec<SearchResult>> {
             .and_then(Value::as_str)
             .unwrap_or("")
             .to_string();
-        let header_image = item
+        let fallback_image = item
             .get("logo")
             .and_then(Value::as_str)
-            .map(String::from)
-            .unwrap_or_else(|| {
-                format!(
-                    "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg"
-                )
-            });
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(String::from);
         if appid > 0 && !name.is_empty() {
             results.push(SearchResult {
                 appid,
                 name,
-                header_image,
+                header_image: header_image_for(appid),
+                fallback_image,
             });
         }
     }
-    Ok(results)
+    results
 }
 
 /// Parse CheapShark `/games?title=` results into SearchResults.
@@ -2829,22 +3196,19 @@ fn parse_cheapshark_results(value: &Value, query: &str) -> Vec<SearchResult> {
         if appid == 0 || name.is_empty() {
             continue;
         }
-        let header_image = item
+        let fallback_image = item
             .get("thumb")
             .and_then(Value::as_str)
-            .filter(|s| !s.is_empty())
-            .map(String::from)
-            .unwrap_or_else(|| {
-                format!(
-                    "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg"
-                )
-            });
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(String::from);
         results.push(SearchResult {
             appid,
             name,
-            header_image,
+            header_image: header_image_for(appid),
+            fallback_image,
         });
-        if results.len() >= 8 {
+        if results.len() >= 10 {
             break;
         }
     }
@@ -2857,33 +3221,203 @@ pub async fn get_steam_game_detail(appid: u32) -> Result<GameDetail> {
     if appid == 0 {
         return Err("AppId must be greater than zero".into());
     }
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(8))
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        .build()
-        .map_err(|err| err.to_string())?;
+    let client = store_client();
+    // Store (rich: description, requirements, price, metacritic) + SteamSpy
+    // (review score) in parallel — each covers the other's blind spots
+    // (store blocked in VN, Spy stale/missing new games and extras).
+    let (store, spy) = tokio::join!(
+        fetch_store_detail(&client, appid),
+        fetch_spy_detail(&client, appid),
+    );
+    let mut detail = match (store, spy) {
+        (Some(store), spy) => merge_store_spy(appid, store, spy),
+        (None, Some(spy)) => spy,
+        (None, None) => {
+            return Err(format!(
+                "game detail unavailable for app {appid} (store + SteamSpy unreachable)"
+            ))
+        }
+    };
+    if let Some(header_image) = steamcmd_image_for(&client, appid).await {
+        detail.header_image = header_image;
+    }
+    Ok(detail)
+}
 
+struct StoreDetail {
+    name: String,
+    header_image: String,
+    developers: Vec<String>,
+    publishers: Vec<String>,
+    genres: Vec<String>,
+    categories: Vec<String>,
+    metacritic: u32,
+    price: String,
+    short_description: String,
+    release_date: String,
+    pc_min: String,
+    pc_rec: String,
+}
+
+/// `[{description}]` arrays (genres, categories, developers...).
+fn desc_list(value: &Value) -> Vec<String> {
+    value
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|entry| entry.get("description")?.as_str())
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+async fn fetch_store_detail(client: &reqwest::Client, appid: u32) -> Option<StoreDetail> {
+    let url = format!("https://store.steampowered.com/api/appdetails?appids={appid}");
+    let value: Value = client
+        .get(&url)
+        .header(reqwest::header::USER_AGENT, MOZILLA_UA)
+        .timeout(Duration::from_secs(6))
+        .send()
+        .await
+        .ok()?
+        .json()
+        .await
+        .ok()?;
+    let data = value.get(&appid.to_string())?;
+    if data.get("success")?.as_bool()? != true {
+        return None;
+    }
+    let data = data.get("data")?;
+    let text = |key: &str| {
+        data.get(key)
+            .and_then(Value::as_str)
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default()
+    };
+    let name = text("name");
+    if name.is_empty() {
+        return None;
+    }
+    let price = if data
+        .get("is_free")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        "Free".to_string()
+    } else {
+        data.get("price_overview")
+            .and_then(|p| p.get("final_formatted"))
+            .and_then(Value::as_str)
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| "N/A".to_string())
+    };
+    let reqs = data.get("pc_requirements");
+    let req_text = |key: &str| {
+        reqs.and_then(|r| r.get(key))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    Some(StoreDetail {
+        name,
+        header_image: text("header_image"),
+        developers: data.get("developers").map(desc_list).unwrap_or_default(),
+        publishers: data.get("publishers").map(desc_list).unwrap_or_default(),
+        genres: data.get("genres").map(desc_list).unwrap_or_default(),
+        categories: data.get("categories").map(desc_list).unwrap_or_default(),
+        metacritic: data
+            .get("metacritic")
+            .and_then(|m| m.get("score"))
+            .and_then(Value::as_u64)
+            .unwrap_or(0) as u32,
+        price,
+        short_description: text("short_description"),
+        release_date: data
+            .get("release_date")
+            .and_then(|r| r.get("date"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        pc_min: req_text("minimum"),
+        pc_rec: req_text("recommended"),
+    })
+}
+
+/// Store wins on rich fields; Spy wins on review score (fallback chain keeps
+/// old behavior when the store is unreachable).
+fn merge_store_spy(appid: u32, store: StoreDetail, spy: Option<GameDetail>) -> GameDetail {
+    let (score, score_label, price) = match spy {
+        Some(spy) => (
+            spy.score,
+            spy.score_label,
+            if store.price == "N/A" {
+                spy.price
+            } else {
+                store.price
+            },
+        ),
+        None => (
+            store.metacritic,
+            if store.metacritic > 0 {
+                "Metacritic".to_string()
+            } else {
+                "N/A".to_string()
+            },
+            store.price,
+        ),
+    };
+    GameDetail {
+        appid,
+        name: store.name,
+        header_image: if store.header_image.trim().is_empty() {
+            header_image_for(appid)
+        } else {
+            store.header_image
+        },
+        developers: store.developers,
+        publishers: store.publishers,
+        genres: store.genres,
+        categories: store.categories,
+        metacritic: store.metacritic,
+        score,
+        score_label,
+        price,
+        short_description: store.short_description,
+        release_date: store.release_date,
+        pc_requirements_minimum: store.pc_min,
+        pc_requirements_recommended: store.pc_rec,
+    }
+}
+
+/// SteamSpy detail (review score that the store API lacks). None on failure.
+async fn fetch_spy_detail(client: &reqwest::Client, appid: u32) -> Option<GameDetail> {
     // SteamSpy API — works when store.steampowered.com is blocked
     let spy_url = format!(
         "https://steamspy.com/api.php?request=appdetails&appid={appid}"
     );
     let data: Value = client
         .get(&spy_url)
+        .header(reqwest::header::USER_AGENT, MOZILLA_UA)
+        .timeout(Duration::from_secs(8))
         .send()
         .await
-        .map_err(|err| format!("SteamSpy request failed: {err}"))?
+        .ok()?
         .json()
         .await
-        .map_err(|err| format!("SteamSpy parse failed: {err}"))?;
+        .ok()?;
 
     let name = data
         .get("name")
         .and_then(Value::as_str)
         .unwrap_or("")
         .to_string();
-    let header_image = format!(
-        "https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/{appid}/header.jpg"
-    );
+    if name.trim().is_empty() {
+        return None;
+    }
+    let header_image = header_image_for(appid);
 
     // SteamSpy returns comma-separated strings for developer/publisher/genre
     let developers: Vec<String> = data
@@ -2964,7 +3498,7 @@ pub async fn get_steam_game_detail(appid: u32) -> Result<GameDetail> {
         })
         .unwrap_or_else(|| "N/A".to_string());
 
-    Ok(GameDetail {
+    Some(GameDetail {
         appid,
         name,
         header_image,
@@ -3195,6 +3729,26 @@ pub async fn refresh_manifest_gids_for_paths(
                 continue;
             }
         };
+        // Drop junk pins (non-numeric GIDs) left by older DB rows before
+        // parsing — otherwise the file can never re-render clean.
+        let (text, removed_junk) = purge_invalid_gid_pins(&text);
+        if removed_junk > 0 {
+            match fs::write(path, &text) {
+                Ok(()) => {
+                    result.files_written.push(display_path(path));
+                    result.warnings.push(format!(
+                        "removed {removed_junk} invalid manifest pin(s) from {}",
+                        path.display()
+                    ));
+                }
+                Err(err) => {
+                    result.warnings.push(format!(
+                        "cannot clean {}: {err}",
+                        path.display()
+                    ));
+                }
+            }
+        }
         let Some(mut game) = parse_game_lua(file_name, &text) else {
             result.warnings.push(format!(
                 "cannot parse AppID from {} (left as-is)",
@@ -3295,18 +3849,22 @@ pub async fn refresh_manifest_gids(
 
 // ==================== MIRROR MANIFEST SEED ====================
 //
-// Downloads real `.manifest` binaries from community mirrors into
+// Downloads real `.manifest` binaries from backend-provided mirror URLs into
 // `<steam>/depotcache/<depot>_<gid>.manifest` and pins the matching GID in
 // `G-<appid>.lua`. A cached manifest lets Steam skip the manifest-request-
 // code step entirely, which is the only working path for games the account
 // does not own (server-side 401 gate — no client bypass exists).
-// Mirrors carry no codes/keys, only archived files, so this is pure
-// file placement: Lua alone shows the game, manifest alone is inert,
-// both in the right folders is what installs.
+// Binary hosts are supplied by the house backend (micah-lua bundle
+// `mirrors`) combined with the external raw fallback below. The app never
+// trusts a URL blindly: every candidate is HEAD-checked (concurrently)
+// before use, because backend flags and Hub3 layout both go stale. Depots
+// with no working mirror resolve to missing and the caller reports the
+// manifest-code flow instead.
 
 const HUB3_RAW_TEMPLATE: &str = "https://raw.githubusercontent.com/steamtools-games/ManifestHub3/{appid}/{depot}_{gid}.manifest";
 
-/// Canonical mirror URL for one depot manifest (no auth, no rate limit).
+/// External raw fallback URL for one depot manifest (HEAD-checked by the
+/// caller — Hub3's per-app layout comes and goes, so never trust blindly).
 pub fn hub3_raw_url(appid: u32, depot: u32, gid: &str) -> String {
     HUB3_RAW_TEMPLATE
         .replace("{appid}", &appid.to_string())
@@ -3482,8 +4040,13 @@ fn read_game_lua(steam_dir: &std::path::Path, appid: u32) -> Result<String> {
 }
 
 /// Mirror URL map for live depots: bundle first (1 round-trip covers all),
-/// then the old manifests endpoint, otherwise direct ManifestHub3 raw URLs
-/// (HEAD-checked per depot).
+/// Mirror URL map for live depots, combining every source we have:
+///  1. backend bundle `mirrors` (house text data),
+///  2. external raw fallback (Hub3 URL template).
+/// All candidates are HEAD-checked CONCURRENTLY before use (the old serial
+/// per-depot HEAD pass cost N round-trips; backend flags and Hub3 layout
+/// both go stale). Depots with no working URL resolve to ""
+/// (= missing → manifest-code flow).
 async fn resolve_mirror_urls(
     client: &reqwest::Client,
     appid: u32,
@@ -3491,114 +4054,61 @@ async fn resolve_mirror_urls(
     node_base_url: Option<&str>,
 ) -> Vec<(u32, String, String)> {
     // (depot, live_gid, mirror_url)
+    let mut table: std::collections::HashMap<u32, String> = std::collections::HashMap::new();
     if let Some(base) = node_base_url.map(str::trim).filter(|s| !s.is_empty()) {
         // Prefer bundle: lua+depots+mirrors in one call (P2).
         if let Some(bundle) = fetch_bundle(&client, base, appid).await {
-            if !bundle.mirrors.is_empty() {
-                let mut out = Vec::new();
-                for (depot_id, gid) in live {
-                    let key = depot_id.to_string();
-                    if let Some(entry) = bundle.mirrors.get(&key) {
-                        if entry.mirror_ok && !entry.mirror_url.is_empty() {
-                            out.push((*depot_id, gid.clone(), entry.mirror_url.clone()));
-                        } else {
-                            out.push((*depot_id, gid.clone(), String::new()));
-                        }
-                    } else {
-                        out.push((*depot_id, gid.clone(), String::new()));
-                    }
-                }
-                return out;
-            }
-        }
-        let url = format!("{}/api/public/manifests/{}", base.trim_end_matches('/'), appid);
-        if let Ok(resp) = client.get(&url).send().await {
-            if let Ok(body) = resp.json::<serde_json::Value>().await {
-                // New house shape (via 307 redirect): {depots: [{depot_id,
-                // manifest, size, branch}]}. The DB only carries GIDs, so a
-                // candidate raw URL is HEAD-checked once before use.
-                if let Some(arr) = body.get("depots").and_then(|v| v.as_array()) {
-                    let mut gids: std::collections::HashMap<u32, String> =
-                        std::collections::HashMap::new();
-                    for row in arr {
-                        let depot = row.get("depot_id").and_then(json_u32);
-                        let manifest = row
-                            .get("manifest")
-                            .and_then(|v| v.as_str())
-                            .map(str::trim)
-                            .unwrap_or_default();
-                        if let Some(d) = depot {
-                            if !manifest.is_empty() {
-                                gids.insert(d, manifest.to_string());
-                            }
-                        }
-                    }
-                    if !gids.is_empty() {
-                        let mut out = Vec::new();
-                        for (depot_id, gid) in live {
-                            let candidate = gids
-                                .get(depot_id)
-                                .filter(|g| *g == gid)
-                                .map(|g| hub3_raw_url(appid, *depot_id, g))
-                                .unwrap_or_default();
-                            let url = if candidate.is_empty() {
-                                String::new()
-                            } else {
-                                let ok = client
-                                    .head(&candidate)
-                                    .send()
-                                    .await
-                                    .map(|r| r.status().is_success())
-                                    .unwrap_or(false);
-                                if ok {
-                                    candidate
-                                } else {
-                                    String::new()
-                                }
-                            };
-                            out.push((*depot_id, gid.clone(), url));
-                        }
-                        return out;
-                    }
-                }
-                if let Some(map) = body.get("manifests").and_then(|m| m.as_object()) {
-                    let mut out = Vec::new();
-                    for (depot_id, gid) in live {
-                        let key = depot_id.to_string();
-                        let entry = map.get(&key);
-                        let ok = entry
-                            .and_then(|e| e.get("mirror_ok"))
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(false);
-                        let murl = entry
-                            .and_then(|e| e.get("mirror_url"))
-                            .and_then(|v| v.as_str())
-                            .map(|s| s.to_string())
-                            .unwrap_or_else(|| hub3_raw_url(appid, *depot_id, gid));
-                        if ok {
-                            out.push((*depot_id, gid.clone(), murl));
-                        } else {
-                            out.push((*depot_id, gid.clone(), String::new()));
-                        }
-                    }
-                    return out;
+            for (depot_id, _) in live {
+                if let Some(url) = bundle
+                    .mirrors
+                    .get(&depot_id.to_string())
+                    .filter(|entry| entry.mirror_ok && !entry.mirror_url.is_empty())
+                    .map(|entry| entry.mirror_url.clone())
+                {
+                    table.insert(*depot_id, url);
                 }
             }
         }
     }
-    // Fallback: raw URLs, HEAD-checked one by one (cheap, no API limit).
-    let mut out = Vec::new();
+    // External raw fallback for depots the backend has no URL for.
     for (depot_id, gid) in live {
-        let url = hub3_raw_url(appid, *depot_id, gid);
-        let ok = client
-            .head(&url)
-            .send()
-            .await
-            .map(|r| r.status().is_success())
-            .unwrap_or(false);
-        out.push((*depot_id, gid.clone(), if ok { url } else { String::new() }));
+        table
+            .entry(*depot_id)
+            .or_insert_with(|| hub3_raw_url(appid, *depot_id, gid));
     }
+    // One concurrent HEAD pass over everything (fast fail, sorted output).
+    let mut join_set: tokio::task::JoinSet<(u32, String, String)> = tokio::task::JoinSet::new();
+    for (depot_id, gid) in live {
+        let depot_id = *depot_id;
+        let url = table.get(&depot_id).cloned().unwrap_or_default();
+        let http = client.clone();
+        let gid = gid.clone();
+        join_set.spawn(async move {
+            let ok = head_ok(&http, &url).await;
+            (depot_id, gid, if ok { url } else { String::new() })
+        });
+    }
+    let mut out = Vec::with_capacity(live.len());
+    while let Some(joined) = join_set.join_next().await {
+        if let Ok(row) = joined {
+            out.push(row);
+        }
+    }
+    out.sort_by_key(|(depot_id, _, _)| *depot_id);
     out
+}
+
+/// Cheap liveness probe: non-empty URL answering HEAD 2xx.
+async fn head_ok(client: &reqwest::Client, url: &str) -> bool {
+    if url.is_empty() {
+        return false;
+    }
+    client
+        .head(url)
+        .send()
+        .await
+        .map(|r| r.status().is_success())
+        .unwrap_or(false)
 }
 
 /// Download mirror manifests for every live depot missing from depotcache,
@@ -3634,6 +4144,21 @@ async fn seed_manifests_inner(
         .map(keyed_depots_in_lua)
         .unwrap_or_default();
     let depotcache = steam.join("depotcache");
+    // Drop depotcache files with non-numeric GIDs — Steam never creates
+    // these, only junk pins could have produced them. Numeric-but-stale files
+    // are left alone; Steam may still use them.
+    if let Ok(entries) = std::fs::read_dir(&depotcache) {
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if let Some(rest) = name.strip_suffix(".manifest") {
+                if let Some((_, gid)) = rest.split_once('_') {
+                    if !is_valid_gid(gid) {
+                        let _ = std::fs::remove_file(entry.path());
+                    }
+                }
+            }
+        }
+    }
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
@@ -3767,6 +4292,16 @@ async fn seed_manifests_inner(
                     any = true;
                 }
             }
+            // Strip any junk pins the file already had (older DB rows) so the
+            // write below fully repairs the Lua instead of preserving junk.
+            let (cleaned, removed_junk) = purge_invalid_gid_pins(&patched);
+            if removed_junk > 0 {
+                patched = cleaned;
+                any = true;
+                result.warnings.push(format!(
+                    "removed {removed_junk} invalid manifest pin(s) from G-{appid}.lua"
+                ));
+            }
             if any {
                 let path = lua_dir(&steam).join(format!("G-{appid}.lua"));
                 let bak = format!("{}.bak", path.display());
@@ -3830,7 +4365,7 @@ pub async fn prepare_install(
             ));
             for d in &seed.missing {
                 report.blockers.push(format!(
-                    "mirror has no manifest for depot {d} (game updated or never archived)"
+                    "no mirror serves a manifest for depot {d} — Steam must fetch it with a live code (retry when providers recover), then Install"
                 ));
             }
             for d in &seed.no_key {
@@ -4193,10 +4728,24 @@ async fn fetch_bundle(
             arr.iter()
                 .filter_map(|row| {
                     let depot_id = row.get("depot_id")?.as_str()?.to_string();
+                    // Junk depot ids ("", "0", non-numeric) drop the whole row.
+                    depot_id.trim().parse::<u32>().ok().filter(|d| *d != 0)?;
+                    // Junk manifests degrade to None (= missing → backfilled
+                    // from live/steamcmd) instead of poisoning pins.
+                    let manifest = row
+                        .get("manifest")
+                        .and_then(|v| v.as_str())
+                        .map(str::trim)
+                        .unwrap_or_default();
+                    let manifest = if manifest.is_empty() || !is_valid_gid(manifest) {
+                        None
+                    } else {
+                        Some(manifest.to_string())
+                    };
                     Some(BundleDepot {
                         depot_id,
                         depot_key: row.get("depot_key").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                        manifest: row.get("manifest").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                        manifest,
                     })
                 })
                 .collect()
@@ -4313,6 +4862,14 @@ pub async fn fix_lua(
         }
         match pulled {
             Some(text) => {
+                // Never persist junk pins from any source — Steam 401s on
+                // them and the download loops at 0%.
+                let (text, removed_junk) = purge_invalid_gid_pins(&text);
+                if removed_junk > 0 {
+                    report.warnings.push(format!(
+                        "removed {removed_junk} invalid manifest pin(s) from pulled Lua"
+                    ));
+                }
                 if let Some(parent) = lua_path.parent() {
                     let _ = std::fs::create_dir_all(parent);
                 }
@@ -4419,11 +4976,19 @@ pub async fn fix_lua(
             .and_then(|n| n.to_str())
             .unwrap_or("game.lua");
         let text = std::fs::read_to_string(&lua_path).map_err(|e| e.to_string())?;
+        let (text, removed_junk) = purge_invalid_gid_pins(&text);
         let mut game = parse_game_lua(file_name, &text)
             .ok_or_else(|| format!("cannot parse AppID from {} (left as-is)", lua_path.display()))?;
         let mut warnings = Vec::new();
+        if removed_junk > 0 {
+            std::fs::write(&lua_path, &text).map_err(|e| e.to_string())?;
+            warnings.push(format!("removed {removed_junk} invalid manifest pin(s)"));
+        }
         let (updated, unchanged) = apply_fresh_gids(&mut game, &live, &mut warnings);
         let mut files_written = Vec::new();
+        if removed_junk > 0 {
+            files_written.push(lua_path.display().to_string());
+        }
         if !updated.is_empty() {
             let new_text = render_game_lua(&game).map_err(|e| e.to_string())?;
             std::fs::write(&lua_path, new_text).map_err(|e| e.to_string())?;
@@ -4574,6 +5139,206 @@ pub async fn install_status(
         "PARTIAL".to_string()
     };
     Ok(InstallStatus { appid, state, depots })
+}
+
+/// One-click repair for the 0%-then-back-to-download loop, for ANY appid:
+///  1. backs up + removes the stuck appmanifest (refuses live downloads that
+///     are actually making progress),
+///  2. purges junk Lua pins (non-numeric GIDs),
+///  3. re-seeds manifests from live GIDs,
+///  4. auto-fetches manifest request codes from the house backend for any
+///     depots still missing and applies them (no manual paste).
+/// Never touches healthy installs. Returns the exact next step for Steam.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoFixReport {
+    pub appid: u32,
+    pub steps: Vec<String>,
+    pub warnings: Vec<String>,
+    pub acf_removed: bool,
+    pub acf_backup: String,
+    pub pins_cleaned: u32,
+    pub seeded: Vec<u32>,
+    pub already_cached: Vec<u32>,
+    pub missing: Vec<u32>,
+    pub no_key: Vec<u32>,
+    pub next_step: String,
+}
+
+/// Reads the DLL's own manifest-code telemetry (`micah_mode/manifest_codes.log`)
+/// to tell whether the code providers (wudrm/steamrun) are currently alive.
+/// Returns a human hint when they are silent or failing, None when the last
+/// attempt worked recently.
+fn manifest_provider_hint(steam: &Path) -> Option<String> {
+    let path = steam.join("micah_mode").join("manifest_codes.log");
+    let meta = std::fs::metadata(&path).ok()?;
+    let age_h = meta
+        .modified()
+        .ok()
+        .and_then(|mtime| std::time::SystemTime::now().duration_since(mtime).ok())
+        .map(|age| age.as_secs() / 3600)
+        .unwrap_or(u64::MAX);
+    let last_status = std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|text| {
+            text.lines().rev().take(50).find_map(|line| {
+                line.split("status=")
+                    .nth(1)
+                    .and_then(|s| s.split_whitespace().next())
+                    .map(str::to_string)
+            })
+        })
+        .unwrap_or_else(|| "unknown".to_string());
+    if last_status == "ok" && age_h < 24 {
+        return None;
+    }
+    Some(if age_h >= 24 {
+        format!(
+            "manifest code providers silent for ~{age_h}h (last attempt: {last_status}) — Steam cannot fetch manifests until wudrm/steamrun recover; retry later"
+        )
+    } else {
+        format!(
+            "manifest code providers failing (last attempt: {last_status}) — retry later when they recover"
+        )
+    })
+}
+
+pub async fn auto_fix_download(
+    steam_dir: Option<&str>,
+    appid: u32,
+    node_base_url: Option<&str>,
+) -> Result<AutoFixReport> {
+    if appid == 0 {
+        return Err("AppId must be greater than zero".into());
+    }
+    let steam = resolve_steam_dir_opt(steam_dir)?;
+    let mut steps: Vec<String> = Vec::new();
+    let mut warnings: Vec<String> = Vec::new();
+
+    // 1. The Lua carries the pins Steam needs — without it there is nothing
+    // to repair against.
+    let lua_path = lua_dir(&steam).join(format!("G-{appid}.lua"));
+    let lua_text = std::fs::read_to_string(&lua_path)
+        .map_err(|_| format!("G-{appid}.lua not found — import Lua first"))?;
+    steps.push("lua: present".into());
+
+    // 2. Inspect the appmanifest (if any) and reset it only when stuck.
+    let acf_path = steam
+        .join("steamapps")
+        .join(format!("appmanifest_{appid}.acf"));
+    let mut acf_removed = false;
+    let mut acf_backup = String::new();
+    if let Ok(acf_text) = std::fs::read_to_string(&acf_path) {
+        let flags: u32 = acf_value(&acf_text, "StateFlags")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        let update_result: i32 = acf_value(&acf_text, "UpdateResult")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        let to_download: u64 = acf_value(&acf_text, "BytesToDownload")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        let downloaded: u64 = acf_value(&acf_text, "BytesDownloaded")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        let healthy = flags & 4 != 0 && update_result == 0 && to_download == downloaded;
+        if healthy {
+            steps.push("appmanifest: healthy — nothing to reset".into());
+        } else if to_download > downloaded && downloaded > 0 {
+            // Real bytes are arriving — never nuke a live download.
+            return Err(format!(
+                "download in progress ({downloaded}/{to_download} bytes) — pause it in Steam first, then run Auto-fix again"
+            ));
+        } else {
+            // 0%-loop signature (nothing ever arrived) or error state:
+            // gather 401 evidence, then backup + remove the stuck manifest.
+            let clog = load_content_log_tail(&steam);
+            let depots = lua_manifest_depots(&steam, appid);
+            if ownership_denied_in(&clog, appid) {
+                warnings.push("content log shows ownership-denied for this app".into());
+            }
+            let denied_401s = count_manifest_401s(&clog, &depots);
+            if denied_401s > 0 {
+                warnings.push(format!(
+                    "content log shows {denied_401s} manifest 401(s) — stale or blocked GIDs"
+                ));
+            }
+            let backup_dir = steam.join("micah_mode").join("backups");
+            fs::create_dir_all(&backup_dir)
+                .map_err(|e| format!("cannot create backups dir: {e}"))?;
+            let stamp = std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            let backup = backup_dir.join(format!("appmanifest_{appid}.acf.autofix.{stamp}.bak"));
+            fs::copy(&acf_path, &backup).map_err(|e| format!("backup failed: {e}"))?;
+            fs::remove_file(&acf_path).map_err(|e| format!("cannot remove stuck acf: {e}"))?;
+            acf_removed = true;
+            acf_backup = backup.display().to_string();
+            steps.push(format!(
+                "appmanifest: stuck (flags {flags}, update_result {update_result}, {downloaded}/{to_download} bytes) — backed up + removed"
+            ));
+        }
+    } else {
+        steps.push("appmanifest: absent — nothing to reset".into());
+    }
+
+    // 3. Purge junk pins left by older DB rows (backup first).
+    let (cleaned, removed) = purge_invalid_gid_pins(&lua_text);
+    let mut pins_cleaned = 0u32;
+    if removed > 0 {
+        let bak = format!("{}.bak", lua_path.display());
+        let _ = std::fs::copy(&lua_path, &bak);
+        std::fs::write(&lua_path, &cleaned)
+            .map_err(|e| format!("cannot clean G-{appid}.lua: {e}"))?;
+        pins_cleaned = removed as u32;
+        steps.push(format!("lua: removed {removed} invalid manifest pin(s)"));
+    } else {
+        steps.push("lua: pins clean".into());
+    }
+
+    // 4. Re-seed manifests from live GIDs (also repairs depotcache).
+    let seed = seed_manifests_inner(steam.to_str(), appid, node_base_url, &|_, _, _, _| {}).await?;
+    warnings.extend(seed.warnings);
+    let seeded: Vec<u32> = seed.seeded.iter().map(|s| s.depot_id).collect();
+    steps.push(format!(
+        "seed: +{} manifest(s), {} cached",
+        seeded.len(),
+        seed.already_cached.len()
+    ));
+
+    // 5. Depots still missing? The binary can only come from Steam itself via
+    // a live manifest code — check the DLL's own telemetry for whether the
+    // code providers (wudrm/steamrun) are currently answering.
+    if !seed.missing.is_empty() {
+        if let Some(hint) = manifest_provider_hint(&steam) {
+            warnings.push(hint);
+        } else {
+            steps.push("codes: providers answering — press Install in Steam NOW".into());
+        }
+    }
+
+    let next_step = if !seed.missing.is_empty() || !seed.no_key.is_empty() {
+        format!(
+            "Still blocked — missing manifests {:?}, no key {:?}. Steam must fetch them with live codes; see warnings for provider status, then press Install in Steam.",
+            seed.missing, seed.no_key
+        )
+    } else {
+        "Open Steam — the game shows as uninstalled — press Install/Download. Steam uses the seeded manifests and finishes past 0%.".to_string()
+    };
+
+    Ok(AutoFixReport {
+        appid,
+        steps,
+        warnings,
+        acf_removed,
+        acf_backup,
+        pins_cleaned,
+        seeded,
+        already_cached: seed.already_cached,
+        missing: seed.missing,
+        no_key: seed.no_key,
+        next_step,
+    })
 }
 
 /// ── pasted manifest-code overrides ─────────────────────────────────────
@@ -5058,7 +5823,9 @@ fn lua_manifest_pairs(steam_dir: &Path, appid: u32) -> Vec<(u32, String)> {
 /// True when `<steam>/depotcache/<depot>_<gid>.manifest` exists non-empty.
 /// A cached manifest lets Steam skip the manifest-request-code step.
 fn depotcache_has(steam_dir: &Path, depot: u32, gid: &str) -> bool {
-    if gid.is_empty() || gid == "0" {
+    // Junk GIDs must never count as cached (they inflate health stats and
+    // hide the real blocker).
+    if !is_valid_gid(gid) {
         return false;
     }
     let p = steam_dir

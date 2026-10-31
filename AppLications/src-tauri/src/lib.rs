@@ -338,6 +338,18 @@ async fn install_status(
     manager::install_status(steam_dir.as_deref(), appid).await
 }
 
+/// One-click repair for the 0%-then-back-to-download loop: backs up + removes
+/// a stuck appmanifest (refuses live downloads), purges junk Lua pins, then
+/// re-seeds manifests. Tells the caller the exact next step in Steam.
+#[tauri::command]
+async fn auto_fix_download(
+    steam_dir: Option<String>,
+    appid: u32,
+    node_base_url: Option<String>,
+) -> CommandResult<manager::AutoFixReport> {
+    manager::auto_fix_download(steam_dir.as_deref(), appid, node_base_url.as_deref()).await
+}
+
 /// One call answering "can this game actually install right now?"
 /// (Lua presence + manifest-cache coverage), for ANY appid.
 #[tauri::command]
@@ -430,7 +442,7 @@ fn upsert_game(steam_dir: String, game: GameConfig) -> CommandResult<()> {
 }
 
 #[tauri::command]
-fn delete_game(steam_dir: String, appid: u32) -> CommandResult<()> {
+fn delete_game(steam_dir: String, appid: u32) -> CommandResult<String> {
     manager::delete_game_from_dir(steam_dir, appid)
 }
 
@@ -942,6 +954,7 @@ pub fn run() {
             seed_manifests,
             prepare_install,
             install_status,
+            auto_fix_download,
             check_install_ready,
             fix_lua,
             save_manifest_code_overrides,

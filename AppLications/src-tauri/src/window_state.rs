@@ -59,13 +59,16 @@ fn save_state(app: &AppHandle, state: &WindowState) {
 /// the window is shown (window is created with `visible: false`).
 pub fn restore(app: &AppHandle) {
     let state = load_state(app);
-    if !state.remember {
-        return;
-    }
-
     let Some(window) = app.get_webview_window("main") else {
         return;
     };
+    if !state.remember {
+        // The window is created with `visible: false`, so it must still be
+        // shown here — just skip applying the saved bounds. (Skipping show()
+        // leaves the process running with no window at all.)
+        let _ = window.show();
+        return;
+    }
 
     if state.maximized {
         let _ = window.maximize();

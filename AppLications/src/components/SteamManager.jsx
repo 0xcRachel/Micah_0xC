@@ -216,6 +216,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
   const [restoring, setRestoring] = useState(null);
   const [refreshingManifests, setRefreshingManifests] = useState(null);
   const [fixingLua, setFixingLua] = useState(null);
+  const [fixingDownload, setFixingDownload] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
   // Fix Lua progress modal state (backend streams fix-lua-progress events).
   const [fixModal, setFixModal] = useState(null);
@@ -355,6 +356,30 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
     await refreshGames();
   };
 
+  // Auto-fix stuck download (0% loop): resets the stuck appmanifest (backs it
+  // up first, refuses live downloads), cleans bad pins, re-seeds manifests.
+  const autoFix = async (g) => {
+    const key = String(g.appid);
+    if (!confirm(`Auto-fix download for "${g.name}"? The stuck appmanifest is backed up + reset, bad pins are cleaned and manifests re-seeded. Afterwards press Install in Steam.`)) return;
+    setFixingDownload(key);
+    try {
+      const res = await api.autoFixDownload(g.appid, { steamDir });
+      const bits = [];
+      if (res.acf_removed) bits.push('manifest reset');
+      if (res.pins_cleaned) bits.push(`${res.pins_cleaned} bad pin(s) cleaned`);
+      if (res.seeded.length) bits.push(`manifests +${res.seeded.length}`);
+      if (res.already_cached.length) bits.push(`${res.already_cached.length} cached`);
+      const blocked = res.missing.length > 0 || res.no_key.length > 0;
+      show(`Auto-fix ${g.name}: ${bits.join(' · ') || 'nothing to fix'}`, blocked ? 'error' : 'success', 6000);
+      if (res.missing.length) show(`Still missing manifests: ${res.missing.join(', ')}`, 'error', 6000);
+      if (res.no_key.length) show(`Still no key: ${res.no_key.join(', ')}`, 'error', 6000);
+      res.warnings.forEach(w => show(w, 'error', 5000));
+      show(res.next_step, 'success', 8000);
+      await refreshGames();
+    } catch (e) { toastError(show, 'Auto-fix', e); }
+    finally { setFixingDownload(null); }
+  };
+
 
 
   // Refresh pinned manifest gids from steamcmd.net. Stale gids make Steam
@@ -457,7 +482,7 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
   const bulkDelete = async () => {
     const targets = games.filter(g => selected.has(String(g.appid)));
     if (!targets.length) return;
-    if (!confirm(`Delete ${targets.length} selected game(s)?`)) return;
+    if (!confirm(`Delete ${targets.length} selected game(s)? Removes each Micah Lua AND Steam manifest (backed up). Game files stay on disk. Restart Steam afterwards.`)) return;
     for (const g of targets) {
       try { await api.deleteGame(steamDir, g.appid); }
       catch (e) { toastError(show, `Failed to delete ${g.name}`, e); }
@@ -690,6 +715,15 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
                     >
                       {fixingLua === String(g.appid) ? <Spinner /> : null} Fix Lua
                     </button>
+                    <button
+                      className="sm-btn"
+                      style={{ padding: '6px 10px', fontSize: 12 }}
+                      disabled={!!fixingDownload || gamesLoading}
+                      onClick={() => autoFix(g)}
+                      title="Auto-fix stuck download (0% loop): resets the stuck appmanifest, cleans bad pins, re-seeds manifests"
+                    >
+                      {fixingDownload === String(g.appid) ? <Spinner /> : null} Auto-fix
+                    </button>
                     {(() => {
                       const r = readiness[String(g.appid)];
                       if (!r) return (
@@ -708,9 +742,12 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
                     <button
                       className="sm-btn danger"
                       style={{ padding: '6px 10px', fontSize: 12 }}
-                      onClick={() => {
-                        if (confirm(`Delete "${g.name}"?`))
-                          handle(() => api.deleteGame(steamDir, g.appid), 'Delete', 'Game deleted');
+                      onClick={async () => {
+                        if (!confirm(`Delete "${g.name}"? Removes the Micah Lua AND the Steam manifest (backed up), so Steam stops showing it. Game files stay on disk. Restart Steam afterwards.`)) return;
+                        try {
+                          show(await api.deleteGame(steamDir, g.appid), 'success', 6000);
+                          await refreshGames();
+                        } catch (e) { toastError(show, 'Delete', e); }
                       }}
                     >
                       Delete
@@ -720,87 +757,6 @@ const TabGames = ({ steamDir, show, games, gamesLoading, refreshGames }) => {
               ))}
             </div>
           )}
-    </>
-  );
-};
-
-// ==================== TAB: HEALTH (ghost detector) ====================
-
-const HEALTH_LABEL = {
-  healthy: 'Healthy',
-  ghosts_missing: 'Ghost missing file',
-  ghosts_empty: 'Ghost empty',
-  leftover_empty: 'Empty folder',
-  unmanaged_ghost: 'Unmanaged ghost',
-  unmanaged_empty: 'Unmanaged empty',
-  not_installed: 'Not installed',
-};
-
-const TabHealth = ({ steamDir, show }) => {
-  const [rows, setRows] = useState(null);
-  const [scanning, setScanning] = useState(false);
-  const [cleaning, setCleaning] = useState(null);
-  const scan = async () => {
-    if (!steamDir) return;
-    setScanning(true);
-    try {
-      const r = await api.scanInstallHealth(steamDir);
-      setRows(r);
-    } catch (e) {
-      show(`Health scan error: ${e?.message ?? e}`, 'error', 5000);
-    } finally { setScanning(false); }
-  };
-  useEffect(() => { if (steamDir) scan(); }, [steamDir]);
-  const clean = async (appid, force) => {
-    setCleaning(String(appid));
-    try {
-      const msg = await api.cleanGhost(steamDir, appid, force);
-      show(msg, 'success');
-      await scan();
-    } catch (e) { show(`Clean error: ${e?.message ?? e}`, 'error', 5000); }
-    finally { setCleaning(null); }
-  };
-  const cleanAll = async () => {
-    if (!rows) return;
-    const ghostss = rows.filter(r => r.health !== 'healthy' && r.health !== 'not_installed' && r.canAutoClean);
-    if (!ghosts.length) { show('No ghosts to clean', 'success'); return; }
-    if (!confirm(`Clean ${ghosts.length} ghosts (backup .acf + delete empty folder)?`)) return;
-    for (const r of ghostss) { try { await api.cleanGhost(steamDir, r.appid, false); } catch {} }
-    show(`Cleaned ${ghosts.length} ghosts`, 'success');
-    await scan();
-  };
-  if (!steamDir) return <p className="sm-empty">Select Steam directory first.</p>;
-  if (rows === null) return <p className="sm-empty">{scanning ? <><Spinner /> Scanning...</> : 'Not scanned'}</p>;
-  const ghostss = rows.filter(r => r.health !== 'healthy' && r.health !== 'not_installed');
-  const displayRows = rows.filter(r => r.health !== 'not_installed');
-  return (
-    <>
-      <div className="sm-action-row">
-        <button className="sm-btn primary" disabled={scanning} onClick={scan}>{scanning ? <><Spinner /> Scanning</> : 'Rescan'}</button>
-        <button className="sm-btn" disabled={scanning || !ghosts.some(r => r.canAutoClean)} onClick={cleanAll}>Clean all ghostss ({ghosts.filter(r => r.canAutoClean).length})</button>
-        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{rows.length} appmanifest • {ghosts.length} ghosts • {rows.filter(r => r.luaManaged).length} managed by Micah</span>
-      </div>
-      {displayRows.length === 0 ? <p className="sm-empty">No apps installed (Clean).</p> : (
-        <div className="table-scroll">
-          <table className="source-table">
-            <thead><tr><th>AppID</th><th>Name</th><th>Health</th><th>Dir</th><th>Size</th><th>Manifest</th><th></th></tr></thead>
-            <tbody>
-              {displayRows.map(r => (
-                <tr key={r.appid}>
-                  <td className="s-name">#{r.appid}</td>
-                  <td>{r.name || `App ${r.appid}`}</td>
-                  <td><span className="mono" style={{ color: r.health === 'healthy' ? '#3dd68c' : r.luaManaged ? '#ff9d5c' : 'var(--text-muted)' }}>{HEALTH_LABEL[r.health] || r.health}</span>{r.ownershipDenied ? ' · 401' : ''}</td>
-                  <td>{r.installDir || '—'}</td>
-                  <td>{r.bytesOnDisk ? `${(r.bytesOnDisk/1024/1024).toFixed(1)} MB` : '0'}</td>
-                  <td>{r.manifestsTotal ? `${r.manifestsCached}/${r.manifestsTotal}` : '—'}</td>
-                  <td>{r.health !== 'healthy' && <button className="sm-btn danger" style={{ padding: '4px 8px', fontSize: 11 }} disabled={!!cleaning || (!r.canAutoClean && !r.luaManaged)} onClick={() => clean(r.appid, !r.canAutoClean && !r.luaManaged)}>{cleaning === String(r.appid) ? <Spinner /> : 'Clean'}</button>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 8 }}>Micah managed = has G-*.lua • 5 purchased games will show healthy nhưng không managed by Micah — không nên dọn.</p>
     </>
   );
 };
@@ -981,7 +937,6 @@ const TABS = [
   { id: 'status', label: 'Status' },
   { id: 'dll', label: 'DLLs' },
   { id: 'games', label: 'Games' },
-  { id: 'health', label: 'Health' },
   { id: 'logs', label: 'Logs' },
   { id: 'settings', label: 'Settings' },
 ];
@@ -1161,9 +1116,6 @@ const SteamManager = ({ onBack }) => {
             {tab === 'games' && (
               <TabGames steamDir={steamDir} show={show}
                 games={games} gamesLoading={gamesLoading} refreshGames={refreshGames} />
-            )}
-            {tab === 'health' && (
-              <TabHealth steamDir={steamDir} show={show} />
             )}
             {tab === 'logs' && (
               <TabLogs steamDir={steamDir} show={show} />

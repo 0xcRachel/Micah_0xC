@@ -137,6 +137,48 @@ body {
   transition: background-color 0.1s ease, color 0.1s ease;
 }
 
+/* Theme wave transition — layered blobs form the water body, rings read as
+   ripples; everything is transform/opacity only for compositor-friendly motion. */
+.theme-wave {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: none;
+  pointer-events: none;
+  overflow: hidden;
+  contain: strict;
+}
+
+.theme-wave-body {
+  position: absolute;
+  inset: 0;
+  transform-origin: center center;
+  will-change: transform, opacity;
+}
+
+.theme-wave-blob {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.theme-wave-ring {
+  position: absolute;
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+.theme-wave-crest {
+  border-width: 1.5px;
+}
+
 /* Notebook Grid Pattern */
 .notebook-grid {
   background-color: var(--bg-grid);

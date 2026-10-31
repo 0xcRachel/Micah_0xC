@@ -3,6 +3,7 @@ import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { invoke } from '@tauri-apps/api/core';
 import { Toast, useToast } from './Toast';
+import SteamImage from './SteamImage';
 
 gsap.registerPlugin(useGSAP);
 
@@ -395,11 +396,19 @@ const ImagePreviewModal = ({ game, onClose }) => {
           overflow: 'hidden',
           borderBottom: '2px solid var(--card-border)',
         }}>
-          {game.imageSrc ? (
-            <img
+          {(game.imageSrc || game.appid) ? (
+            <SteamImage
+              appid={game.appid}
               src={game.imageSrc}
               alt={game.title}
               style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+              fallback={
+                <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--card-bg-alt)' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '800', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '2px' }}>
+                    No Cover Available
+                  </span>
+                </div>
+              }
             />
           ) : (
             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--card-bg-alt)' }}>

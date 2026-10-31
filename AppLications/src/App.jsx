@@ -28,7 +28,12 @@ gsap.registerPlugin(useGSAP);
 const App = () => {
   const containerRef = useRef(null);
   const contentRef = useRef(null);
-  const transitionCircleRef = useRef(null);
+  const themeWaveRef = useRef(null);
+  const waveBodyRef = useRef(null);
+  const waveBlobRefs = useRef([]);
+  const waveCrestRef = useRef(null);
+  const waveAfterRef = useRef(null);
+  const waveRipplesRef = useRef([]);
   const transitionTlRef = useRef(null);
 
   const { updateAppSettings } = useSync();
@@ -165,18 +170,22 @@ const App = () => {
   const { contextSafe } = useGSAP({ scope: containerRef });
 
   const handleToggleDarkMode = contextSafe((nextVal) => {
-    // Rapid clicks: kill any in-flight theme transition before starting a new
-    // one so multiple GSAP tweens never stack on the same circle element
-    // (which caused jank / instant color flips with no animation).
+    // Rapid clicks: stop any in-flight wave before starting a new one so
+    // layers never stack tweens (which caused jank / instant colour flips).
     transitionTlRef.current?.kill();
-    gsap.killTweensOf(transitionCircleRef.current);
-    gsap.set(transitionCircleRef.current, { clearProps: 'display' });
+    const wave = themeWaveRef.current;
+    const body = waveBodyRef.current;
+    const crest = waveCrestRef.current;
+    const after = waveAfterRef.current;
+    const blobs = waveBlobRefs.current.filter(Boolean);
+    const ripples = waveRipplesRef.current.filter(Boolean);
+    if (!wave || !body || !crest || !after || blobs.length === 0) return;
 
-    // 1. Calculate transition starting coordinates
+    gsap.killTweensOf([body, crest, after, ...blobs, ...ripples]);
+
+    // 1. Origin — the theme toggle itself; screen centre as a fallback.
     let startX = window.innerWidth / 2;
     let startY = window.innerHeight / 2;
-
-    // Try to get dark-mode-toggle button position in DOM
     const toggleButton = document.getElementById('dark-mode-toggle');
     if (toggleButton) {
       const rect = toggleButton.getBoundingClientRect();
@@ -184,60 +193,140 @@ const App = () => {
       startY = rect.top + rect.height / 2;
     }
 
-    // Determine target color based on transition
+    // 2. Incoming theme palette (the wave rides on top of the old theme).
     const targetBgColor = nextVal ? '#161215' : '#f8f6f0';
+    const accent = nextVal ? '#ff5fa8' : '#ec5fa2';
+    const accent2 = '#1f9e95';
+    const rippleColors = [accent2, accent, accent2];
 
-    // 2. Position the transition circle and make it visible
-    gsap.set(transitionCircleRef.current, {
+    // 3. Distance to the farthest corner, plus margin for the lagging blobs.
+    const base = 100; // layer diameter in px
+    const dx = Math.max(startX, window.innerWidth - startX);
+    const dy = Math.max(startY, window.innerHeight - startY);
+    const radius = Math.sqrt(dx * dx + dy * dy);
+    const coverScale = (radius * 1.2) / (base / 2);
+
+    // 4. Reset every layer at the toggle origin.
+    //    The body is a union of same-colour blobs with small offsets, so the
+    //    merged front undulates like water instead of reading as a circle.
+    gsap.set(body, {
+      transformOrigin: `${startX}px ${startY}px`,
+      scale: 1,
+      opacity: 1,
+    });
+    const blobSpecs = [
+      { ox: 0, oy: 0, sx: 1, sy: 1, delay: 0 },
+      { ox: 150, oy: -90, sx: 0.945, sy: 0.975, delay: 0.05 },
+      { ox: -130, oy: 110, sx: 0.975, sy: 0.94, delay: 0.09 },
+    ];
+    blobs.forEach((el, i) => {
+      const spec = blobSpecs[i % blobSpecs.length];
+      gsap.set(el, {
+        left: startX + spec.ox,
+        top: startY + spec.oy,
+        xPercent: -50,
+        yPercent: -50,
+        scaleX: 0,
+        scaleY: 0,
+        background: targetBgColor,
+      });
+    });
+
+    gsap.set(crest, {
       left: startX,
       top: startY,
       xPercent: -50,
       yPercent: -50,
-      background: targetBgColor,
-      display: 'block',
       scale: 0,
-      opacity: 1,
+      borderColor: accent,
+      boxShadow: `0 0 22px 4px ${accent}66`,
+      opacity: 0.9,
     });
+    gsap.set(after, {
+      left: startX,
+      top: startY,
+      xPercent: -50,
+      yPercent: -50,
+      scale: 0,
+      borderColor: accent,
+      boxShadow: `0 0 16px 2px ${accent}44`,
+      opacity: 0,
+    });
+    ripples.forEach((el, i) => {
+      gsap.set(el, {
+        left: startX,
+        top: startY,
+        xPercent: -50,
+        yPercent: -50,
+        scale: 0,
+        borderColor: rippleColors[i % rippleColors.length],
+        boxShadow: `0 0 12px ${rippleColors[i % rippleColors.length]}55`,
+        opacity: 0.42 - i * 0.1,
+      });
+    });
+    gsap.set(wave, { display: 'block' });
 
-    // 3. Calculate max scale required to cover screen corners from start position
-    const dx = Math.max(startX, window.innerWidth - startX);
-    const dy = Math.max(startY, window.innerHeight - startY);
-    const radius = Math.sqrt(dx * dx + dy * dy);
-    const targetScale = (radius / 10) * 1.05; // circle radius is 10px (width 20px)
-
-    // 4. Run transition timeline
-    const tl = gsap.timeline();
+    const tl = gsap.timeline({ defaults: { overwrite: 'auto' } });
     transitionTlRef.current = tl;
 
-    // Growth phase: scale up the circle to completely engulf the screen
-    tl.to(transitionCircleRef.current, {
-      scale: targetScale,
-      duration: 0.6,
-      ease: 'power2.in',
+    // 5. Wave body — layered blobs expand at slightly different rates.
+    blobs.forEach((el, i) => {
+      const spec = blobSpecs[i % blobSpecs.length];
+      tl.to(el, {
+        scaleX: coverScale * spec.sx,
+        scaleY: coverScale * spec.sy,
+        duration: 0.74 + i * 0.035,
+        ease: 'power3.inOut',
+      }, spec.delay);
     });
 
-    // Swapping phase: swap theme classes & state behind the solid screen cover.
-    // NOTE: updateAppSettings (SyncProvider write → whole-tree re-render) is
-    // deliberately deferred to the cleanup phase so React reconciliation
-    // never runs while the circle is scaling (dropped frames).
-    tl.add(() => {
+    // 6. Luminous crest on the leading edge, dissolving as it travels.
+    tl.to(crest, { scale: coverScale * 1.01, duration: 0.72, ease: 'power2.inOut' }, 0);
+    tl.to(crest, { opacity: 0, duration: 0.34, ease: 'power1.in' }, 0.26);
+
+    // 7. Concentric ripples fan out ahead of the wave, slightly elliptical.
+    ripples.forEach((el, i) => {
+      const delay = 0.02 + i * 0.1;
+      tl.to(el, {
+        scaleX: coverScale * (1.25 + i * 0.15),
+        scaleY: coverScale * (1.34 + i * 0.13),
+        duration: 0.8 + i * 0.08,
+        ease: 'power2.out',
+      }, delay);
+      tl.to(el, { opacity: 0, duration: 0.62 + i * 0.07, ease: 'power1.in' }, delay + 0.05);
+    });
+
+    // 8. Swap theme behind the fully covered screen. updateAppSettings
+    //    (SyncProvider write → whole-tree re-render) stays in cleanup so
+    //    React reconciliation never runs while the wave is moving fast.
+    tl.call(() => {
       setIsDarkMode(nextVal);
       localStorage.setItem('setting_darkMode', String(nextVal));
-    });
+    }, null, 0.6);
 
-    // Reveal phase: smoothly fade the overlay out
-    tl.to(transitionCircleRef.current, {
+    // 9. The water body spreads once more, then disperses.
+    tl.to(body, {
+      scale: 1.04,
       opacity: 0,
-      duration: 0.45,
+      duration: 0.52,
       ease: 'power2.out',
-    });
+    }, 0.78);
 
-    // Clean up phase: hide transition element, then sync theme to cloud
-    // (off the animation critical path).
-    tl.add(() => {
-      gsap.set(transitionCircleRef.current, { display: 'none' });
+    // 10. A last ripple washes across the new theme and fades away.
+    tl.to(after, {
+      scaleX: coverScale * 1.34,
+      scaleY: coverScale * 1.4,
+      duration: 0.74,
+      ease: 'power2.out',
+    }, 0.58);
+    tl.to(after, { opacity: 0.3, duration: 0.1 }, 0.58);
+    tl.to(after, { opacity: 0, duration: 0.62, ease: 'power1.in' }, 0.7);
+
+    // 11. Clean up off the critical path, then sync the theme to the cloud.
+    tl.call(() => {
+      gsap.set(wave, { display: 'none' });
       updateAppSettings({ theme: nextVal ? 'dark' : 'light' });
-    });
+    }, null, 1.34);
   });
 
   const handleToggleAnimations = (nextVal) => {
@@ -305,21 +394,27 @@ const App = () => {
         </div>
       )}
 
-      {/* Circle Transition Overlay */}
-      <div
-        ref={transitionCircleRef}
-        style={{
-          position: 'fixed',
-          zIndex: 9999,
-          width: '20px',
-          height: '20px',
-          borderRadius: '50%',
-          pointerEvents: 'none',
-          transform: 'scale(0)',
-          transformOrigin: 'center center',
-          display: 'none',
-        }}
-      />
+      {/* Theme wave overlay — layered blobs + ripples that swell and dissipate */}
+      <div ref={themeWaveRef} className="theme-wave" aria-hidden="true">
+        {[0, 1, 2].map((i) => (
+          <div
+            key={`ripple-${i}`}
+            ref={(el) => { waveRipplesRef.current[i] = el; }}
+            className="theme-wave-ring"
+          />
+        ))}
+        <div ref={waveBodyRef} className="theme-wave-body">
+          {[0, 1, 2].map((i) => (
+            <div
+              key={`blob-${i}`}
+              ref={(el) => { waveBlobRefs.current[i] = el; }}
+              className="theme-wave-blob"
+            />
+          ))}
+        </div>
+        <div ref={waveCrestRef} className="theme-wave-ring theme-wave-crest" />
+        <div ref={waveAfterRef} className="theme-wave-ring theme-wave-after" />
+      </div>
 
       {/* Home content */}
       <div

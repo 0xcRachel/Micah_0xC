@@ -1,7 +1,8 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { invoke } from '@tauri-apps/api/core';
+import SteamImage from './SteamImage';
 
 // Register GSAP hook
 gsap.registerPlugin(useGSAP);
@@ -52,17 +53,27 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  // Monotonic request id — stale (slower, older-query) responses are dropped
+  // instead of overwriting newer results.
+  const reqId = useRef(0);
 
   const containerRef = useRef(null);
   const inputRef = useRef(null);
   const dropdownRef = useRef(null);
   const iconRef = useRef(null);
+  // Tracks whether the dropdown panel is currently shown, so result updates
+  // (typing) never replay the panel-open animation.
+  const dropdownShownRef = useRef(false);
 
   // ── Fetch search results from Steam Store API (via Tauri proxy) ──────────
   const fetchSearchResults = useCallback(async (q) => {
+    const id = ++reqId.current;
+    const alive = () => id === reqId.current;
     if (!q.trim() || q.trim().length < 2) {
       setResults([]);
       setIsOpen(false);
+      setActiveIndex(-1);
       return;
     }
 
@@ -70,8 +81,10 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
     try {
       // Primary: Tauri Rust backend (avoids CORS completely)
       const items = await invoke('search_steam_games', { query: q });
+      if (!alive()) return;
       setResults(items);
-      if (items.length > 0) setIsOpen(true);
+      setActiveIndex(-1);
+      setIsOpen(true);
     } catch {
       // Fallback for browser dev mode: CheapShark direct first (works where
       // Steam domains are blocked), then CORS proxies with Steam Community.
@@ -90,7 +103,7 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
             appid: Number(g.steamAppID) || 0,
             name: g.external,
             header_image: g.thumb ||
-              `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${g.steamAppID}/header.jpg`,
+              `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${g.steamAppID}/header.jpg`,
           })).filter(it => it.appid > 0).slice(0, 8);
         }
         if (items.length === 0) {
@@ -100,7 +113,7 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
             appid: Number(item.appid) || 0,
             name: item.name,
             header_image: item.logo ||
-              `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${item.appid}/header.jpg`,
+              `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${item.appid}/header.jpg`,
           }));
           items = list.filter(it => it.appid > 0);
         }
@@ -108,15 +121,19 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
         items.sort((a, b) =>
           (b.name.toLowerCase().startsWith(needle) ? 1 : 0) -
           (a.name.toLowerCase().startsWith(needle) ? 1 : 0));
+        if (!alive()) return;
         setResults(items);
-        if (items.length > 0) setIsOpen(true);
-        else setResults([]);
+        setActiveIndex(-1);
+        setIsOpen(true);
       } catch {
+        if (!alive()) return;
         console.warn('Steam search: all sources failed. Please run via Tauri (cargo tauri dev).');
         setResults([]);
+        setActiveIndex(-1);
+        setIsOpen(true);
       }
     } finally {
-      setIsLoading(false);
+      if (alive()) setIsLoading(false);
     }
   }, []);
 
@@ -136,8 +153,8 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
 
     // Bounce feedback on input
     gsap.timeline()
-      .to(inputRef.current, { scale: 0.97, duration: 0.08 })
-      .to(inputRef.current, { scale: 1, duration: 0.2, ease: 'elastic.out(1.1)' });
+      .to(inputRef.current, { scale: 0.97, duration: 0.08, overwrite: 'auto' })
+      .to(inputRef.current, { scale: 1, duration: 0.2, ease: 'elastic.out(1.1)', overwrite: 'auto' });
 
     try {
       const detail = await invoke('get_steam_game_detail', { appid: item.appid });
@@ -190,7 +207,7 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
         onSelectGame({
           title: d.name || item.name,
           developer: developers[0] || publishers[0] || 'Unknown',
-          imageSrc: `https://shared.fastly.steamstatic.com/store_item_assets/steam/apps/${item.appid}/header.jpg`,
+          imageSrc: `https://shared.akamai.steamstatic.com/store_item_assets/steam/apps/${item.appid}/header.jpg`,
           score: reviewPct,
           scoreLabel,
           price,
@@ -214,6 +231,7 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
           scoreLabel: 'N/A',
           price: 'N/A',
           tags: [],
+          appid: item.appid,
         });
       }
     } finally {
@@ -222,22 +240,53 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
   };
 
   // ── GSAP dropdown open/close animation ──────────────────────────────────
+  // The panel stays mounted so the close animation can actually play. Result
+  // updates while open get a quiet row fade instead of replaying the whole
+  // panel animation (which looked like blinking on every keystroke).
   useGSAP(() => {
-    if (isOpen && dropdownRef.current) {
-      gsap.fromTo(dropdownRef.current,
-        { opacity: 0, y: -8, scaleY: 0.95 },
-        { opacity: 1, y: 0, scaleY: 1, duration: 0.22, ease: 'back.out(1.2)', transformOrigin: 'top center' }
-      );
-      const items = dropdownRef.current?.querySelectorAll('.search-item');
-      if (items && items.length > 0) {
+    const panel = dropdownRef.current;
+    const icon = iconRef.current;
+    if (!panel) return;
+
+    if (isOpen && results.length > 0) {
+      const opening = !dropdownShownRef.current;
+      dropdownShownRef.current = true;
+
+      gsap.to(panel, {
+        autoAlpha: 1,
+        y: 0,
+        scaleY: 1,
+        duration: 0.22,
+        ease: 'power2.out',
+        overwrite: 'auto',
+      });
+
+      const items = panel.querySelectorAll('.search-item');
+      if (opening) {
         gsap.fromTo(items,
-          { opacity: 0, x: -12 },
-          { opacity: 1, x: 0, duration: 0.18, stagger: 0.035, ease: 'power2.out' }
+          { autoAlpha: 0, y: -5 },
+          { autoAlpha: 1, y: 0, duration: 0.18, stagger: 0.025, ease: 'power2.out', overwrite: 'auto' }
+        );
+        gsap.to(icon, { rotation: 90, scale: 1.08, duration: 0.22, ease: 'power2.out', overwrite: 'auto' });
+      } else if (items.length > 0) {
+        gsap.fromTo(items,
+          { autoAlpha: 0.45 },
+          { autoAlpha: 1, duration: 0.16, stagger: 0.012, ease: 'power1.out', overwrite: 'auto' }
         );
       }
-      gsap.to(iconRef.current, { rotation: 90, scale: 1.1, color: '#30302e', duration: 0.25, ease: 'power2.out' });
     } else {
-      gsap.to(iconRef.current, { rotation: 0, scale: 1, color: '#87867f', duration: 0.18 });
+      if (dropdownShownRef.current) {
+        dropdownShownRef.current = false;
+        gsap.to(panel, {
+          autoAlpha: 0,
+          y: -6,
+          scaleY: 0.98,
+          duration: 0.16,
+          ease: 'power2.in',
+          overwrite: 'auto',
+        });
+      }
+      gsap.to(icon, { rotation: 0, scale: 1, duration: 0.18, ease: 'power1.out', overwrite: 'auto' });
     }
   }, { dependencies: [isOpen, results], scope: containerRef });
 
@@ -247,6 +296,32 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
   const handleBlur = () => {
     setTimeout(() => setIsOpen(false), 200);
   };
+
+  // ── Keyboard navigation: ↑/↓ move, Enter selects, Esc closes ────────────
+  const handleKeyDown = (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!isOpen || results.length === 0) return;
+      e.preventDefault();
+      const dir = e.key === 'ArrowDown' ? 1 : -1;
+      setActiveIndex((prev) => (prev + dir + results.length) % results.length);
+    } else if (e.key === 'Enter') {
+      if (isOpen && activeIndex >= 0 && activeIndex < results.length) {
+        handleItemClick(results[activeIndex]);
+      }
+    } else if (e.key === 'Escape') {
+      setIsOpen(false);
+      setActiveIndex(-1);
+      inputRef.current?.blur();
+    }
+  };
+
+  // Keep the keyboard-highlighted row visible while moving.
+  useEffect(() => {
+    if (activeIndex < 0) return;
+    dropdownRef.current
+      ?.querySelectorAll('.search-item')
+      ?.[activeIndex]?.scrollIntoView({ block: 'nearest' });
+  }, [activeIndex]);
 
   return (
     <div
@@ -261,16 +336,16 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
       {/* Stable hover/press wrapper to avoid GSAP jitter */}
       <div
         onMouseEnter={() => {
-          gsap.to(inputRef.current, { y: -3, boxShadow: '0 6px 0 var(--card-shadow)', duration: 0.18, ease: 'power2.out' });
+          gsap.to(inputRef.current, { y: -2, duration: 0.18, ease: 'power2.out', overwrite: 'auto' });
         }}
         onMouseLeave={() => {
-          gsap.to(inputRef.current, { y: 0, boxShadow: '0 4px 0 var(--card-shadow)', duration: 0.18, ease: 'power2.out' });
+          gsap.to(inputRef.current, { y: 0, duration: 0.18, ease: 'power2.out', overwrite: 'auto' });
         }}
         onMouseDown={() => {
-          gsap.to(inputRef.current, { y: 2, boxShadow: '0 2px 0 var(--card-shadow)', duration: 0.08 });
+          gsap.to(inputRef.current, { y: 2, duration: 0.08, overwrite: 'auto' });
         }}
         onMouseUp={() => {
-          gsap.to(inputRef.current, { y: -3, boxShadow: '0 6px 0 var(--card-shadow)', duration: 0.12, ease: 'back.out(1.2)' });
+          gsap.to(inputRef.current, { y: -2, duration: 0.12, ease: 'back.out(1.2)', overwrite: 'auto' });
         }}
         style={{ paddingBottom: '6px', cursor: 'pointer' }}
       >
@@ -289,7 +364,7 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
           }}
         >
           {/* Search icon */}
-          <span ref={iconRef} style={{ display: 'inline-flex', marginRight: '10px', color: 'var(--text-muted)' }}>
+          <span ref={iconRef} className={`search-icon${isOpen ? ' is-open' : ''}`}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="8" />
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
@@ -303,7 +378,8 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
             onChange={handleQueryChange}
             onFocus={handleFocus}
             onBlur={handleBlur}
-            placeholder="Search Steam Games (e.g. Elden Ring, Portal 2...)"
+            onKeyDown={handleKeyDown}
+            placeholder="Search Steam games or AppID (e.g. Elden Ring, 268910...)"
             style={{
               flex: 1,
               border: 'none',
@@ -342,32 +418,38 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
         </div>
       </div>
 
-      {/* Dropdown results */}
-      {isOpen && results.length > 0 && (
-        <div
-          ref={dropdownRef}
-          style={{
-            position: 'absolute',
-            top: 'calc(100% + 8px)',
-            left: 0,
-            right: 0,
-            background: 'var(--card-bg)',
-            border: '2px solid var(--card-border)',
-            borderRadius: '16px',
-            boxShadow: '0 6px 0 var(--card-shadow), 0 16px 32px rgba(0,0,0,var(--shadow-opacity))',
-            zIndex: 200,
-            maxHeight: '280px',
-            overflowY: 'auto',
-            transformOrigin: 'top center',
-            padding: '8px',
-            transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
-          }}
-          className="thin-scrollbar"
-        >
-          {results.map((item) => (
+      {/* Dropdown results — kept mounted so the close animation can play */}
+      <div
+        ref={dropdownRef}
+        aria-hidden={!isOpen}
+        style={{
+          position: 'absolute',
+          top: 'calc(100% + 8px)',
+          left: 0,
+          right: 0,
+          background: 'var(--card-bg)',
+          border: '2px solid var(--card-border)',
+          borderRadius: '16px',
+          boxShadow: '0 6px 0 var(--card-shadow), 0 16px 32px rgba(0,0,0,var(--shadow-opacity))',
+          zIndex: 200,
+          maxHeight: '280px',
+          overflowY: 'auto',
+          transformOrigin: 'top center',
+          transform: 'translateY(-8px) scaleY(0.97)',
+          padding: '8px',
+          opacity: 0,
+          visibility: 'hidden',
+          pointerEvents: isOpen ? 'auto' : 'none',
+          transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
+        }}
+        className="thin-scrollbar"
+      >
+          {results.map((item, idx) => (
             <div
               key={item.appid}
               onClick={() => handleItemClick(item)}
+              onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--button-hover-bg)'; setActiveIndex(idx); }}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = idx === activeIndex ? 'var(--button-hover-bg)' : 'transparent'}
               className="search-item"
               style={{
                 display: 'flex',
@@ -377,15 +459,16 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
                 borderRadius: '10px',
                 cursor: 'pointer',
                 transition: 'background-color 0.15s',
+                backgroundColor: idx === activeIndex ? 'var(--button-hover-bg)' : 'transparent',
               }}
-              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'var(--button-hover-bg)'}
-              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             >
               {/* Thumbnail */}
-              <img
+              <SteamImage
+                appid={item.appid}
                 src={item.header_image}
+                fallbackSrc={item.fallback_image}
+                placeholderSrc={NO_IMAGE_PLACEHOLDER}
                 alt={item.name}
-                onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = NO_IMAGE_PLACEHOLDER; }}
                 style={{
                   width: '54px',
                   height: '30px',
@@ -410,15 +493,60 @@ const SearchGame = ({ onSelectGame, className = '', style = {} }) => {
               </svg>
             </div>
           ))}
+      </div>
+
+      {/* Empty state — query finished with no matches */}
+      {isOpen && results.length === 0 && !isLoading && query.trim().length >= 2 && (
+        <div
+          className="search-pop"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 8px)',
+            left: 0,
+            right: 0,
+            background: 'var(--card-bg)',
+            border: '2px solid var(--card-border)',
+            borderRadius: '16px',
+            boxShadow: '0 6px 0 var(--card-shadow), 0 16px 32px rgba(0,0,0,var(--shadow-opacity))',
+            zIndex: 200,
+            padding: '14px 16px',
+            fontSize: '13px',
+            color: 'var(--text-muted)',
+            lineHeight: 1.6,
+          }}
+        >
+          No games found for “{query.trim()}”.
+          <br />
+          <span style={{ fontSize: '12px' }}>Try an exact title or a numeric AppID (e.g. 268910).</span>
         </div>
       )}
-
-      {/* Global spinner style */}
-      <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes search-pop {
+          from { opacity: 0; transform: translateY(-6px); }
+          to { opacity: 1; transform: none; }
+        }
+        @keyframes search-fade {
+          from { opacity: 0; }
+          to { opacity: 0.85; }
+        }
+        .search-pop { animation: search-pop 0.18s cubic-bezier(0.22, 1, 0.36, 1); }
+        .search-fade { animation: search-fade 0.18s ease-out; }
+        .search-icon {
+          display: inline-flex;
+          margin-right: 10px;
+          color: var(--text-muted);
+          transition: color 0.2s ease;
+        }
+        .search-icon.is-open { color: var(--text-color); }
+        @media (prefers-reduced-motion: reduce) {
+          .search-pop, .search-fade { animation: none; }
+        }
+      `}</style>
 
       {/* Loading detail overlay */}
       {isLoadingDetail && (
-        <div style={{
+        <div className="search-fade" style={{
           position: 'absolute',
           top: 0,
           left: 0,
